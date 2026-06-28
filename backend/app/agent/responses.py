@@ -3,32 +3,29 @@ from typing import Any, Optional
 
 
 class ErrorDetail(BaseModel):
-    type: str  # tool_error, validation_error, internal_error, not_found
+    type: str
     message: str
     step: Optional[int] = None
 
 
 class ToolResult(BaseModel):
     tool: str
-    status: str  # success, failed
+    status: str
     result: Optional[Any] = None
     error: Optional[ErrorDetail] = None
 
 
-class AgentMeta(BaseModel):
-    profile: str
-    cognition: str
-    strategy: str
-    replans: int
-
-
 class AgentResponse(BaseModel):
     execution_id: str
-    status: str  # success, failed
+    status: str
     goal: str
     result: Optional[str] = None
     steps: list[ToolResult]
-    meta: AgentMeta
+    score: float = 0
+    replans: int = 0
+    strategy: str = "default"
+    profile: str = "balanced"
+    cognition: str = "medium"
     error: Optional[ErrorDetail] = None
     tenant_id: Optional[str] = None
     timeline: Optional[dict] = None
@@ -79,13 +76,6 @@ def format_agent_response(raw: dict) -> AgentResponse:
         if last.result:
             result_text = str(last.result)
 
-    meta = AgentMeta(
-        profile=raw.get("profile", "balanced"),
-        cognition=raw.get("cognition", {}).get("level", "medium"),
-        strategy=raw.get("strategy", "default"),
-        replans=raw.get("replans", 0)
-    )
-
     error = None
     if has_failure:
         failed_step = next((s for s in formatted_steps if s.status == "failed"), None)
@@ -98,7 +88,11 @@ def format_agent_response(raw: dict) -> AgentResponse:
         goal=raw.get("goal", ""),
         result=result_text,
         steps=formatted_steps,
-        meta=meta,
+        score=raw.get("score", 0),
+        replans=raw.get("replans", 0),
+        strategy=raw.get("strategy", "default"),
+        profile=raw.get("profile", "balanced"),
+        cognition=raw.get("cognition", "medium"),
         error=error,
         tenant_id=raw.get("tenant_id"),
         timeline=raw.get("timeline"),

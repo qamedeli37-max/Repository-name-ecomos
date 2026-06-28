@@ -6,28 +6,17 @@ load_dotenv()
 
 
 class CriticResult:
-    def __init__(self, selected_plan: str, score_map: dict, plan_details: dict, suggestions: list[str] = None, suggested_strategy: str = None, suggested_profile: str = None, meta_analysis: dict = None):
-        self.selected_plan = selected_plan
-        self.score_map = score_map
-        self.plan_details = plan_details
+    def __init__(self, score: float, suggestions: list[str] = None, approved: bool = True):
+        self.score = score
         self.suggestions = suggestions or []
-        self.suggested_strategy = suggested_strategy
-        self.suggested_profile = suggested_profile
-        self.meta_analysis = meta_analysis or {}
+        self.approved = approved
 
     def to_dict(self):
-        result = {
-            "selected_plan": self.selected_plan,
-            "score_map": self.score_map,
-            "suggestions": self.suggestions
+        return {
+            "score": self.score,
+            "suggestions": self.suggestions,
+            "approved": self.approved
         }
-        if self.suggested_strategy:
-            result["suggested_strategy"] = self.suggested_strategy
-        if self.suggested_profile:
-            result["suggested_profile"] = self.suggested_profile
-        if self.meta_analysis:
-            result["meta_analysis"] = self.meta_analysis
-        return result
 
 
 class CriticAgent:
@@ -42,103 +31,53 @@ class CriticAgent:
         else:
             self.client = None
 
-    def evaluate(self, goal: dict, plans: list[dict], memory=None, current_strategy=None, meta_state=None, current_profile=None, cognition_config=None) -> CriticResult:
+    def evaluate(self, goal: dict, plan: list[dict], memory=None, cognition_config=None) -> CriticResult:
         if cognition_config and cognition_config.verification_level == "none":
-            return self._no_verify_evaluate(plans)
+            return CriticResult(score=1.0, suggestions=["verification skipped"], approved=True)
 
         if self.client:
-            return self._llm_evaluate(goal, plans, memory, current_strategy, meta_state, current_profile, cognition_config)
-        return self._rule_evaluate(goal, plans, memory, current_strategy, meta_state, current_profile, cognition_config)
+            return self._llm_evaluate(goal, plan, memory, cognition_config)
+        return self._rule_evaluate(goal, plan, memory, cognition_config)
 
-    def _no_verify_evaluate(self, plans: list[dict]) -> CriticResult:
-        if not plans:
-            return CriticResult(selected_plan="a", score_map={}, plan_details={}, suggestions=["no plans"])
-        selected = plans[0]
-        return CriticResult(
-            selected_plan=selected.get("id", "a"),
-            score_map={p.get("id", "a"): 1.0 for p in plans},
-            plan_details={p["id"]: p for p in plans},
-            suggestions=["verification skipped (shallow cognition)"]
-        )
-
-    def _llm_evaluate(self, goal: dict, plans: list[dict], memory=None, current_strategy=None, meta_state=None, current_profile=None, cognition_config=None):
+    def _llm_evaluate(self, goal: dict, plan: list[dict], memory=None, cognition_config=None):
+        plan_json = json.dumps(plan, indent=2)
         memory_context = self._build_memory_context(goal, memory)
-        plans_json = json.dumps(plans, indent=2)
-        strategy_context = f"Current strategy: {current_strategy.name if current_strategy else 'default'}"
-        meta_context = self._build_meta_context(meta_state)
-        profile_context = f"Current profile: {current_profile.name if current_profile else 'balanced'}"
-        cog_context = f"Cognition: level={cognition_config.level}, max_steps={cognition_config.max_steps}, verification={cognition_config.verification_level}" if cognition_config else ""
+        cog_context = f"Verification: {cognition_config.verification_level}" if cognition_config else ""
 
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {
                     "role": "system",
-                    "content": f"""You are a Meta-Critic. Evaluate plans AND analyze system performance.
-
-Analyze:
-- Plan quality vs cognition depth
-- Strategy effectiveness
-- Profile suitability
-- Execution efficiency
-- System-level performance trends
-
+                    "content": f"""You are a Critic. Evaluate this plan.
 Return ONLY valid JSON:
 {{
-    "selected_plan": "plan_id",
-    "score_map": {{"a": 0.6, "b": 0.9}},
+    "score": 0.85,
     "suggestions": ["suggestion1"],
-    "suggested_strategy": "strategy_id_or_null",
-    "suggested_profile": "profile_id_or_null",
-    "meta_analysis": {{
-        "strategy_effective": true,
-        "profile_suitable": true,
-        "cognition_match": true,
-        "efficiency_trend": "improving|stable|declining",
-        "system_recommendation": "recommendation"
-    }}
+    "approved": true
 }}
-
-{profile_context}
 {cog_context}
-{strategy_context}
-{meta_context}
 {memory_context}"""
                 },
-                {
-                    "role": "user",
-                    "content": f"Goal: {json.dumps(goal)}\nPlans: {plans_json}"
-                }
+                {"role": "user", "content": f"Goal: {json.dumps(goal)}\nPlan: {plan_json}"}
             ]
         )
         content = response.choices[0].message.content
         data = json.loads(content)
-
-        selected_id = data.get("selected_plan", plans[0].get("id", "a"))
-        score_map = data.get("score_map", {})
-        suggestions = data.get("suggestions", [])
-        suggested_strategy = data.get("suggested_strategy")
-        suggested_profile = data.get("suggested_profile")
-        meta_analysis = data.get("meta_analysis", {})
-        plan_details = {p["id"]: p for p in plans}
-
         return CriticResult(
-            selected_plan=selected_id,
-            score_map=score_map,
-            plan_details=plan_details,
-            suggestions=suggestions,
-            suggested_strategy=suggested_strategy,
-            suggested_profile=suggested_profile,
-            meta_analysis=meta_analysis
+            score=data.get("score", 0.5),
+            suggestions=data.get("suggestions", []),
+            approved=data.get("approved", True)
         )
 
-    def _rule_evaluate(self, goal: dict, plans: list[dict], memory=None, current_strategy=None, meta_state=None, current_profile=None, cognition_config=None):
-        score_map = {}
+    def _rule_evaluate(self, goal: dict, plan: list[dict], memory=None, cognition_config=None):
+        score = 1.0
         suggestions = []
-        suggested_strategy = None
-        suggested_profile = None
-        meta_analysis = {}
         goal_text = goal.get("goal", "").lower()
+        plan_tools = [s.get("tool") for s in plan]
+
+        if not plan:
+            return CriticResult(score=0.0, suggestions=["empty plan"], approved=False)
 
         high_score_plans = memory.get_high_score_plans() if memory else []
         high_score_tools = set()
@@ -152,145 +91,45 @@ Return ONLY valid JSON:
             if pattern["count"] >= 2:
                 avoid_steps.add(pattern["step"])
 
-        strategy_effective = True
-        profile_suitable = True
-        cognition_match = True
-        efficiency_trend = "stable"
+        if cognition_config and len(plan) > cognition_config.max_steps:
+            score -= 0.3
+            suggestions.append(f"plan has {len(plan)} steps but max is {cognition_config.max_steps}")
 
-        if meta_state:
-            perf = meta_state.performance
-            if perf.total_executions >= 3:
-                if perf.success_rate < 0.6:
-                    strategy_effective = False
-                    profile_suitable = False
-                    efficiency_trend = "declining"
-                    suggested_profile = "safe_executor"
-                    suggestions.append(f"success rate {perf.success_rate:.0%} - switch to safe_executor")
-                elif perf.success_rate > 0.95 and perf.avg_steps <= 2:
-                    suggested_profile = "efficient_executor"
-                    suggestions.append(f"high efficiency - switch to efficient_executor")
-
-                if perf.avg_replans > 2:
-                    suggested_profile = "learning"
-                    suggestions.append(f"high replan rate - switch to learning profile")
-
-            if len(failure_patterns) >= 3:
-                suggested_strategy = "safe_mode"
-                if not suggested_profile:
-                    suggested_profile = "safe_executor"
-                suggestions.append("multiple failures - switch to safe_mode")
-
-        if cognition_config:
-            for plan in plans:
-                steps = plan.get("steps", [])
-                if len(steps) > cognition_config.max_steps:
-                    cognition_match = False
-                    suggestions.append(f"plan has {len(steps)} steps but max is {cognition_config.max_steps}")
-
-        meta_analysis = {
-            "strategy_effective": strategy_effective,
-            "profile_suitable": profile_suitable,
-            "cognition_match": cognition_match,
-            "efficiency_trend": efficiency_trend,
-            "system_recommendation": "continue current settings" if (strategy_effective and profile_suitable and cognition_match) else "adjustment recommended"
-        }
-
-        for plan in plans:
-            score = 1.0
-            plan_id = plan.get("id", "a")
-            steps = plan.get("steps", [])
-            plan_tools = [s.get("tool") for s in steps]
-
-            if not steps:
-                score = 0.0
-
-            if current_strategy:
-                if current_strategy.avoid_tools:
-                    for tool in plan_tools:
-                        if tool in current_strategy.avoid_tools:
-                            score -= 0.3
-
-                if len(steps) > current_strategy.max_steps:
-                    score -= 0.1
-
-            if cognition_config and len(steps) > cognition_config.max_steps:
+        for tool in plan_tools:
+            if tool in avoid_steps:
                 score -= 0.3
+                suggestions.append(f"tool {tool} has failed before")
 
-            if current_profile:
-                if current_profile.planner_style == "minimal_steps" and len(steps) > 3:
-                    score -= 0.2
-                    suggestions.append("profile expects minimal steps but plan is long")
+        if "create" in goal_text or "创建" in goal_text:
+            if "product.create" not in plan_tools:
+                score -= 0.3
+                suggestions.append("create goal but no create tool")
 
-            if "create" in goal_text or "创建" in goal_text:
-                if "product.create" not in plan_tools:
-                    score -= 0.3
+        if "list" in goal_text or "show" in goal_text or "查看" in goal_text:
+            if "product.list" not in plan_tools and "product.get" not in plan_tools:
+                score -= 0.3
+                suggestions.append("list goal but no list/get tool")
 
-            if "list" in goal_text or "show" in goal_text or "查看" in goal_text:
-                if "product.list" not in plan_tools and "product.get" not in plan_tools:
-                    score -= 0.3
+        if high_score_tools and any(t in high_score_tools for t in plan_tools):
+            score += 0.1
 
-            for tool in plan_tools:
-                if tool in avoid_steps:
-                    score -= 0.3
-
-            if high_score_tools and any(t in high_score_tools for t in plan_tools):
-                score += 0.1
-
-            if len(set(plan_tools)) < len(plan_tools):
-                score -= 0.1
-
-            score_map[plan_id] = min(1.0, max(0.0, score))
+        score = min(1.0, max(0.0, score))
+        approved = score >= 0.5
 
         if not suggestions:
-            suggestions.append("no structural issues detected")
+            suggestions.append("plan looks good")
 
-        selected_id = max(score_map, key=score_map.get)
-        plan_details = {p["id"]: p for p in plans}
-
-        return CriticResult(
-            selected_plan=selected_id,
-            score_map=score_map,
-            plan_details=plan_details,
-            suggestions=suggestions,
-            suggested_strategy=suggested_strategy,
-            suggested_profile=suggested_profile,
-            meta_analysis=meta_analysis
-        )
+        return CriticResult(score=score, suggestions=suggestions, approved=approved)
 
     def _build_memory_context(self, goal: dict, memory) -> str:
         if not memory:
             return ""
-        goal_text = goal.get("goal", "")
         parts = []
-
-        failed = memory.get_failed_patterns(goal_text)
+        failed = memory.get_failed_patterns(goal.get("goal", ""))
         if failed:
-            parts.append(f"Past failures to avoid: {json.dumps(failed[:3])}")
-
+            parts.append(f"Past failures: {json.dumps(failed[:3])}")
         high_score = memory.get_high_score_plans(min_score=0.8)
         if high_score:
             patterns = [{"tools": [s["tool"] for s in r.plan_steps], "score": r.score} for r in high_score[:3]]
-            parts.append(f"High-score plan patterns: {json.dumps(patterns)}")
-
-        failure_patterns = memory.get_failure_patterns()
-        if failure_patterns:
-            avoid_list = [{"step": v["step"], "error": v["error_type"], "count": v["count"]} for v in failure_patterns.values()]
-            parts.append(f"Failure patterns: {json.dumps(avoid_list)}")
-
-        return "\n".join(parts) if parts else ""
-
-    def _build_meta_context(self, meta_state) -> str:
-        if not meta_state:
-            return ""
-        parts = []
-
-        parts.append(f"Current strategy: {meta_state.current_strategy}")
-        parts.append(f"Strategy history: {json.dumps(meta_state.strategy_history)}")
-
-        perf = meta_state.performance
-        parts.append(f"Performance: success_rate={perf.success_rate:.2f}, avg_steps={perf.avg_steps:.1f}, avg_replans={perf.avg_replans:.1f}, avg_score={perf.avg_score:.2f}")
-
-        if meta_state.recent_goals:
-            parts.append(f"Recent goals: {json.dumps(meta_state.recent_goals[-3:])}")
-
+            parts.append(f"High-score patterns: {json.dumps(patterns)}")
         return "\n".join(parts) if parts else ""

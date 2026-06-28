@@ -1,6 +1,5 @@
 import json
 import os
-import re
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -8,8 +7,8 @@ load_dotenv()
 
 class PlannerAgent:
     def __init__(self, strategy_registry=None):
-        self._init_llm()
         self.strategy_registry = strategy_registry
+        self._init_llm()
 
     def _init_llm(self):
         api_key = os.getenv("OPENAI_API_KEY")
@@ -19,46 +18,50 @@ class PlannerAgent:
         else:
             self.client = None
 
-    def plan(self, goal: dict, tools: dict, memory=None, strategy=None, meta_state=None, profile=None, cognition_config=None) -> dict:
-        if self.client:
-            return self._llm_plan(goal, tools, memory, strategy, meta_state, profile, cognition_config)
-        return {"plans": [{"id": "a", "steps": self._rule_plan(goal, memory, strategy, meta_state, profile, cognition_config)}]}
+    def plan(self, goal: dict, tools: dict, memory=None, strategy=None, profile=None, cognition_config=None, critic_feedback=None) -> dict:
+        reasoning = self._get_reasoning(cognition_config)
 
-    def refine_plan(self, goal: dict, tools: dict, feedback: dict, memory=None, strategy=None, meta_state=None, profile=None, cognition_config=None) -> dict:
-        if self.client:
-            return self._llm_refine(goal, tools, feedback, memory, strategy, meta_state, profile, cognition_config)
-        return {"plans": [{"id": "a", "steps": self._rule_refine(goal, feedback, memory, strategy, meta_state, profile, cognition_config)}]}
+        if critic_feedback:
+            goal = self._apply_feedback(goal, critic_feedback)
 
-    def _llm_plan(self, goal: dict, tools: dict, memory=None, strategy=None, meta_state=None, profile=None, cognition_config=None):
-        tool_list = "\n".join(tools.keys())
+        if self.client:
+            return self._llm_plan(goal, tools, memory, strategy, profile, cognition_config, reasoning)
+        return self._rule_plan(goal, tools, memory, strategy, profile, cognition_config, reasoning)
+
+    def refine_plan(self, goal: dict, tools: dict, feedback: str, memory=None, strategy=None, profile=None, cognition_config=None) -> dict:
+        return self.plan(goal, tools, memory, strategy, profile, cognition_config, critic_feedback={"suggestion": feedback})
+
+    def _apply_feedback(self, goal: dict, feedback: dict) -> dict:
+        suggestion = feedback.get("suggestion", "")
+        if suggestion:
+            constraints = goal.get("constraints", [])
+            constraints.append(f"avoid: {suggestion}")
+            goal = {**goal, "constraints": constraints}
+        return goal
+
+    def _get_reasoning(self, cognition_config) -> str:
+        if not cognition_config:
+            return "balanced planning"
+        if cognition_config.level == "shallow":
+            return "minimal reasoning"
+        if cognition_config.level == "deep":
+            return "thorough reasoning with fallbacks"
+        return "balanced planning"
+
+    def _llm_plan(self, goal: dict, tools: dict, memory=None, strategy=None, profile=None, cognition_config=None, reasoning=""):
+        tools_schema = json.dumps([t.to_schema() for t in tools.values()], indent=2)
         memory_context = self._build_memory_context(goal, memory)
-        strategy_context = self._build_strategy_context(strategy)
-        meta_context = self._build_meta_context(meta_state)
-        profile_context = self._build_profile_context(profile)
-        cog_context = self._build_cognition_context(cognition_config)
-
-        reasoning_note = ""
-        if cognition_config:
-            if cognition_config.level == "shallow":
-                reasoning_note = "Keep reasoning minimal. Single step plan only."
-            elif cognition_config.level == "deep":
-                reasoning_note = "Analyze thoroughly. Multi-step plan with fallback steps."
-            else:
-                reasoning_note = "Balance speed and thoroughness. 2-5 steps."
+        constraints = self._build_constraints(strategy, profile, cognition_config)
 
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {
                     "role": "system",
-                    "content": f"""You are a task planner. Generate 2-3 different plans.
+                    "content": f"""You are a Planner. Create a step-by-step plan.
 
-{reasoning_note}
-Max steps allowed: {cognition_config.max_steps if cognition_config else 5}.
-Follow the active profile's planner style.
-Use meta-state insights to improve planning.
-Follow the active strategy constraints.
-CRITICAL: Avoid all known failure patterns.
+Reasoning: {reasoning}
+{constraints}
 
 Return ONLY valid JSON:
 {{
@@ -69,237 +72,106 @@ Return ONLY valid JSON:
         }}
     ]
 }}
-
-Available tools:
-{tool_list}
-
-{profile_context}
-{cog_context}
-{strategy_context}
-{meta_context}
 {memory_context}"""
                 },
-                {"role": "user", "content": json.dumps(goal)}
+                {"role": "user", "content": f"Goal: {json.dumps(goal)}\nTools: {tools_schema}"}
             ]
         )
         content = response.choices[0].message.content
         return json.loads(content)
 
-    def _llm_refine(self, goal: dict, tools: dict, feedback: dict, memory=None, strategy=None, meta_state=None, profile=None, cognition_config=None):
-        tool_list = "\n".join(tools.keys())
-        memory_context = self._build_memory_context(goal, memory)
-        strategy_context = self._build_strategy_context(strategy)
-        meta_context = self._build_meta_context(meta_state)
-        profile_context = self._build_profile_context(profile)
-        cog_context = self._build_cognition_context(cognition_config)
+    def _rule_plan(self, goal: dict, tools: dict, memory=None, strategy=None, profile=None, cognition_config=None, reasoning=""):
+        goal_text = goal.get("goal", "").lower()
+        plan_a = []
+        plan_b = []
+        plan_c = []
 
-        reasoning_note = ""
+        avoid_tools = set()
+        if strategy:
+            avoid_tools = set(strategy.avoid_tools or [])
+            tool_priority = strategy.tool_priority or []
+        else:
+            tool_priority = []
+
+        high_score_tools = set()
+        if memory:
+            for record in memory.get_high_score_plans(min_score=0.8):
+                for step in record.plan_steps:
+                    high_score_tools.add(step.get("tool", ""))
+
+        max_steps = 10
         if cognition_config:
-            if cognition_config.level == "shallow":
-                reasoning_note = "Minimal reasoning. Quick fix."
-            elif cognition_config.level == "deep":
-                reasoning_note = "Deep analysis. Understand root cause before fixing."
-            else:
-                reasoning_note = "Balanced approach to fixing."
+            max_steps = cognition_config.max_steps
 
-        response = self.client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": f"""You are a task planner. A previous plan failed.
+        price = None
+        title = goal_text
+        for part in goal_text.split():
+            try:
+                price = float(part)
+                title = title.replace(part, "").strip()
+            except ValueError:
+                continue
 
-{reasoning_note}
-Max steps: {cognition_config.max_steps if cognition_config else 5}.
-Follow the active profile's planner style.
-Use meta-state insights to improve planning.
-Follow the active strategy constraints.
-CRITICAL: Avoid all known failure patterns.
-Generate 2-3 NEW plans that avoid the error.
+        if "create" in goal_text or "创建" in goal_text:
+            clean_title = title.replace("create", "").replace("创建", "").strip()
+            if not clean_title:
+                clean_title = "new product"
+            args = {"title": clean_title}
+            if price:
+                args["price"] = price
+            plan_a = [{"tool": "product.create", "args": args}]
+            plan_b = [{"tool": "product.create", "args": {**args, "title": f"{clean_title} v2"}}]
 
-Return ONLY valid JSON:
-{{
-    "plans": [
-        {{
-            "id": "a",
-            "steps": [{{"tool": "tool.name", "args": {{}}}}]
-        }}
-    ]
-}}
+        elif "update" in goal_text or "修改" in goal_text:
+            plan_a = [{"tool": "product.update", "args": {"product_id": "latest", "updates": {"title": "updated"}}}]
+            plan_b = [{"tool": "product.list", "args": {}}, {"tool": "product.update", "args": {"product_id": "first", "updates": {"title": "updated"}}}]
 
-Available tools:
-{tool_list}
+        elif "list" in goal_text or "show" in goal_text or "查看" in goal_text:
+            plan_a = [{"tool": "product.list", "args": {}}]
+            plan_b = [{"tool": "product.list", "args": {"limit": 10}}]
 
-{profile_context}
-{cog_context}
-{strategy_context}
-{meta_context}
-{memory_context}"""
-                },
-                {
-                    "role": "user",
-                    "content": f"Goal: {json.dumps(goal)}\nFailed step: {json.dumps(feedback.get('failed_step'))}\nError: {feedback.get('error')}"
-                }
-            ]
-        )
-        content = response.choices[0].message.content
-        return json.loads(content)
+        else:
+            plan_a = [{"tool": "product.list", "args": {}}]
+
+        if len(plan_a) > max_steps:
+            plan_a = plan_a[:max_steps]
+
+        if not plan_b:
+            plan_b = list(reversed(plan_a))
+
+        if not plan_c:
+            plan_c = list(plan_a)
+
+        plans = [
+            {"id": "a", "steps": plan_a},
+            {"id": "b", "steps": plan_b},
+            {"id": "c", "steps": plan_c}
+        ]
+
+        return {"plans": plans}
+
+    def _build_constraints(self, strategy, profile, cognition_config) -> str:
+        parts = []
+        if strategy:
+            parts.append(f"Strategy: {strategy.name} (max {strategy.max_steps} steps)")
+            if strategy.avoid_tools:
+                parts.append(f"Avoid: {', '.join(strategy.avoid_tools)}")
+        if profile:
+            parts.append(f"Profile: {profile.name} (style: {profile.planner_style})")
+        if cognition_config:
+            parts.append(f"Cognition: {cognition_config.level} (max {cognition_config.max_steps} steps)")
+        return "\n".join(parts) if parts else ""
 
     def _build_memory_context(self, goal: dict, memory) -> str:
         if not memory:
             return ""
         goal_text = goal.get("goal", "")
         parts = []
-
-        successful = memory.get_successful_plans(goal_text)
-        if successful:
-            parts.append(f"Past successful plans: {json.dumps(successful[:2])}")
-
         failed = memory.get_failed_patterns(goal_text)
         if failed:
-            parts.append(f"Past failed steps to avoid: {json.dumps(failed[:2])}")
-
+            parts.append(f"Past failures: {json.dumps(failed[:3])}")
         high_score = memory.get_high_score_plans(min_score=0.8)
         if high_score:
             patterns = [{"tools": [s["tool"] for s in r.plan_steps], "score": r.score} for r in high_score[:3]]
-            parts.append(f"High-score plan patterns to emulate: {json.dumps(patterns)}")
-
-        failure_patterns = memory.get_failure_patterns()
-        if failure_patterns:
-            avoid_list = [{"step": v["step"], "error": v["error_type"], "count": v["count"]} for v in failure_patterns.values()]
-            parts.append(f"AVOID these failure patterns: {json.dumps(avoid_list)}")
-
-        return "\n".join(parts) if parts else ""
-
-    def _build_strategy_context(self, strategy) -> str:
-        if not strategy:
-            return ""
-        parts = [f"Active strategy: {strategy.name}"]
-        if strategy.tool_priority:
-            parts.append(f"Prioritize tools: {', '.join(strategy.tool_priority)}")
-        if strategy.avoid_tools:
-            parts.append(f"Avoid tools: {', '.join(strategy.avoid_tools)}")
-        parts.append(f"Max steps: {strategy.max_steps}")
-        return "\n".join(parts)
-
-    def _build_meta_context(self, meta_state) -> str:
-        if not meta_state:
-            return ""
-        parts = []
-
-        perf = meta_state.performance
-        parts.append(f"System performance: success_rate={perf.success_rate:.2f}, avg_steps={perf.avg_steps:.1f}")
-
-        if perf.avg_replans > 1:
-            parts.append("High replan rate detected - generate more robust plans")
-
-        if perf.avg_score < 0.7:
-            parts.append("Low average score - focus on high-quality plans")
-
-        if len(meta_state.strategy_history) > 1:
-            parts.append(f"Strategy evolution: {' -> '.join(meta_state.strategy_history)}")
-
-        return "\n".join(parts) if parts else ""
-
-    def _build_profile_context(self, profile) -> str:
-        if not profile:
-            return ""
-        parts = [f"Active profile: {profile.name}"]
-        parts.append(f"Planner style: {profile.planner_style}")
-        parts.append(f"Critic threshold: {profile.critic_threshold}")
-        parts.append(f"Max replans: {profile.max_replans}")
-        if profile.planner_style == "minimal_steps":
-            parts.append("Generate concise plans with fewest steps possible")
-        elif profile.planner_style == "thorough":
-            parts.append("Generate comprehensive plans, include verification steps")
-        return "\n".join(parts)
-
-    def _build_cognition_context(self, cognition_config) -> str:
-        if not cognition_config:
-            return ""
-        parts = [f"Cognition: level={cognition_config.level}"]
-        parts.append(f"Max steps: {cognition_config.max_steps}")
-        parts.append(f"Allow replan: {cognition_config.allow_replan}")
-        parts.append(f"Verification: {cognition_config.verification_level}")
-        return "\n".join(parts)
-
-    def _rule_plan(self, goal: dict, memory=None, strategy=None, meta_state=None, profile=None, cognition_config=None):
-        text = goal.get("goal", "").lower()
-        steps = []
-        avoid_tools = set()
-        priority_tools = []
-
-        if strategy:
-            avoid_tools = set(strategy.avoid_tools)
-            priority_tools = strategy.tool_priority
-
-        if meta_state and meta_state.performance.avg_replans > 1.5:
-            if "product.create" not in avoid_tools:
-                steps.append({"tool": "product.list", "args": {}})
-
-        if memory:
-            failure_patterns = memory.get_failure_patterns()
-            high_score = memory.get_high_score_plans(min_score=0.8)
-
-            if high_score:
-                best = high_score[0]
-                return [dict(s) for s in best.plan_steps]
-
-            if failure_patterns:
-                for key, pattern in failure_patterns.items():
-                    if pattern["count"] >= 2:
-                        avoid_tools.add(pattern["step"])
-
-        if profile and profile.planner_style == "minimal_steps":
-            if "create" in text or "创建" in text:
-                if "product.create" not in avoid_tools:
-                    steps.append({"tool": "product.create", "args": self._parse_product_create(text)})
-            if "list" in text or "show" in text or "查看" in text:
-                if "product.list" not in avoid_tools:
-                    steps.append({"tool": "product.list", "args": {}})
-            if not steps:
-                if "product.list" not in avoid_tools:
-                    steps.append({"tool": "product.list", "args": {}})
-            return steps
-
-        if "create" in text or "创建" in text:
-            if "product.create" not in avoid_tools:
-                steps.append({"tool": "product.create", "args": self._parse_product_create(text)})
-        if "update" in text or "修改" in text:
-            if "product.update" not in avoid_tools:
-                steps.append({"tool": "product.update", "args": self._parse_product_update(text)})
-        if "list" in text or "show all" in text or "查看所有" in text:
-            if "product.list" not in avoid_tools:
-                steps.append({"tool": "product.list", "args": {}})
-        elif "get" in text or "show" in text or "查看" in text:
-            if "product.get" not in avoid_tools:
-                steps.append({"tool": "product.get", "args": {}})
-
-        if not steps:
-            if "product.list" not in avoid_tools:
-                steps.append({"tool": "product.list", "args": {}})
-
-        if priority_tools and not steps:
-            steps.append({"tool": priority_tools[0], "args": {}})
-
-        return steps
-
-    def _rule_refine(self, goal: dict, feedback: dict, memory=None, strategy=None, meta_state=None, profile=None, cognition_config=None):
-        failed_step = feedback.get("failed_step", {})
-        tool_name = failed_step.get("tool", "")
-        if tool_name == "product.create":
-            return [{"tool": "product.list", "args": {}}]
-        return self._rule_plan(goal, memory, strategy, meta_state, profile, cognition_config)
-
-    def _parse_product_create(self, text: str):
-        price_match = re.search(r'(\d+(?:\.\d+)?)', text)
-        price = float(price_match.group(1)) if price_match else 0
-        cleaned = re.sub(r'create\s+(a\s+)?product\s*', '', text, flags=re.IGNORECASE)
-        cleaned = re.sub(r'帮我创建', '', cleaned)
-        cleaned = re.sub(r'\d+(?:\.\d+)?', '', cleaned).strip()
-        title = cleaned if cleaned else "Untitled"
-        return {"title": title, "price": price}
-
-    def _parse_product_update(self, text: str):
-        price_match = re.search(r'(\d+(?:\.\d+)?)', text)
-        return {"id": "", "price": float(price_match.group(1)) if price_match else 0}
+            parts.append(f"High-score patterns: {json.dumps(patterns)}")
+        return "\nMemory:\n" + "\n".join(parts) if parts else ""

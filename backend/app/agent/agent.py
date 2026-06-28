@@ -9,15 +9,13 @@ from app.agent.cognition import get_cognition_config
 from app.agent.timeline import ExecutionTimeline
 from app.services.execution_service import ExecutionService
 
-MAX_REPLANS_BASE = 3
-MIN_SCORE = 0.7
+MAX_REPLANS = 3
 
 
 class Agent:
     def __init__(self, tools: dict):
         self.tools = tools
         self.strategy_registry = StrategyRegistry()
-        self.meta_manager = MetaStateManager()
         self.profile_manager = ProfileManager()
         self.planner = PlannerAgent(strategy_registry=self.strategy_registry)
         self.critic = CriticAgent()
@@ -34,15 +32,15 @@ class Agent:
         goal_type = self._detect_goal_type(goal.get("goal", ""))
         state = self.state_manager.create(goal=goal.get("goal", ""), plan=[], tenant_id=tenant_id)
         memory = self.state_manager.get_memory(tenant_id)
-        strategy = self.strategy_registry.get_current()
+
         profile = self.profile_manager.get_current()
+        strategy = self.strategy_registry.get_current()
         cognition_config = get_cognition_config(profile.id)
-        meta_state = self.meta_manager.get_state()
 
         if debug:
             debug_data["input"] = {"goal": goal, "tenant_id": tenant_id}
-            debug_data["strategy"] = strategy.id
             debug_data["profile"] = profile.id
+            debug_data["strategy"] = strategy.id
             debug_data["cognition"] = cognition_config.model_dump()
 
         self.execution_service.log_start(
@@ -54,62 +52,50 @@ class Agent:
             cognition=cognition_config.level
         )
 
-        timeline.record("init", metadata={"goal": state.goal})
+        timeline.record("init")
 
-        max_replans = profile.max_replans if cognition_config.allow_replan else 0
         replan_count = 0
-        last_critic_result = None
+        last_score = 0
+        critic_feedback = None
 
-        while state.status != "done" and replan_count < max_replans:
-            plan_data = self.planner.plan(goal, self.tools, memory, strategy, meta_state, profile, cognition_config)
-            timeline.record("planning", metadata={"plans_count": len(plan_data.get("plans", []))})
-
+        while state.status != "done" and replan_count < MAX_REPLANS:
+            plan_data = self.planner.plan(
+                goal, self.tools, memory,
+                strategy=strategy,
+                profile=profile,
+                cognition_config=cognition_config,
+                critic_feedback=critic_feedback
+            )
             plans = plan_data.get("plans", [])
+            timeline.record("planning")
 
             if debug:
                 debug_data["plans"] = plans
 
-            critic_result = self.critic.evaluate(goal, plans, memory, strategy, meta_state, profile, cognition_config)
-            timeline.record("critic", metadata={"selected": critic_result.selected_plan, "scores": critic_result.score_map})
-
-            last_critic_result = critic_result
-
-            if debug:
-                debug_data["critic"] = {
-                    "selected_plan": critic_result.selected_plan,
-                    "score_map": critic_result.score_map,
-                    "suggestions": critic_result.suggestions,
-                    "meta_analysis": critic_result.meta_analysis
-                }
-
-            if critic_result.suggested_strategy:
-                old_id = self.strategy_registry.current_strategy_id
-                new_strategy = self.strategy_registry.switch_to(critic_result.suggested_strategy)
-                if old_id != new_strategy.id:
-                    strategy = new_strategy
-
-            if critic_result.suggested_profile:
-                old_pid = self.profile_manager.current_profile_id
-                new_profile = self.profile_manager.switch_to(critic_result.suggested_profile)
-                if old_pid != new_profile.id:
-                    profile = new_profile
-                    cognition_config = get_cognition_config(profile.id)
-                    max_replans = profile.max_replans if cognition_config.allow_replan else 0
-
-            if critic_result.suggested_strategy or critic_result.suggested_profile:
-                plan_data = self.planner.plan(goal, self.tools, memory, strategy, meta_state, profile, cognition_config)
-                plans = plan_data.get("plans", [])
-                critic_result = self.critic.evaluate(goal, plans, memory, strategy, meta_state, profile, cognition_config)
-                last_critic_result = critic_result
-                timeline.record("replan", metadata={"reason": "critic_suggested_switch"})
-
-            selected_id = critic_result.selected_plan
-            selected_plan = critic_result.plan_details.get(selected_id, plans[0])
+            selected_plan = plans[0] if plans else {"steps": []}
             state.plan = selected_plan.get("steps", [])
             self.state_manager.save(state, tenant_id)
 
+            critic_result = self.critic.evaluate(goal, state.plan, memory, cognition_config)
+            timeline.record("critic")
+            last_score = critic_result.score
+
+            if debug:
+                debug_data["critic"] = critic_result.to_dict()
+
+            if not critic_result.approved and replan_count < MAX_REPLANS - 1:
+                replan_count += 1
+                critic_feedback = {
+                    "suggestion": "; ".join(critic_result.suggestions),
+                    "score": critic_result.score
+                }
+                state.plan = []
+                self.state_manager.save(state, tenant_id)
+                timeline.record("replan", metadata={"reason": "critic_rejected"})
+                continue
+
             exec_result = self.executor.execute_plan(state.plan, profile, cognition_config)
-            timeline.record("execution", metadata={"steps_count": len(exec_result.steps)})
+            timeline.record("execution")
 
             if debug:
                 debug_data["tool_args"] = [{"tool": s.get("tool"), "args": s.get("args", {})} for s in state.plan]
@@ -123,38 +109,32 @@ class Agent:
                         step=step_result.get("tool", "unknown"),
                         error=step_result.get("error", "unknown"),
                         goal_type=goal_type,
-                        context={"execution_id": state.execution_id, "strategy": strategy.id, "profile": profile.id, "cognition": cognition_config.level},
+                        context={"execution_id": state.execution_id},
                         tenant_id=tenant_id
                     )
 
-            if exec_result.requires_replan and replan_count < max_replans - 1:
+            if exec_result.requires_replan and replan_count < MAX_REPLANS - 1:
                 replan_count += 1
-                refined = self.planner.refine_plan(goal, self.tools, exec_result.feedback, memory, strategy, meta_state, profile, cognition_config)
+                critic_feedback = {
+                    "suggestion": "; ".join(exec_result.feedback) if exec_result.feedback else "execution failed",
+                    "score": 0
+                }
                 state.plan = []
                 self.state_manager.save(state, tenant_id)
+                timeline.record("replan", metadata={"reason": "execution_failed"})
             else:
                 break
 
         success = not any(s.get("status") == "failed" for s in state.history)
         self.state_manager.mark_done(state, success, tenant_id)
 
-        score = last_critic_result.score_map.get(selected_id, 0) if last_critic_result else 0
         self.state_manager.record_plan_score(
-            plan_id=selected_id,
+            plan_id=selected_plan.get("id", "a"),
             plan_steps=state.plan,
-            score=score,
+            score=last_score,
             success=success,
             goal_type=goal_type,
             tenant_id=tenant_id
-        )
-
-        self.meta_manager.record_execution(
-            goal=state.goal,
-            strategy=strategy.id,
-            success=success,
-            steps_count=len(state.history),
-            replans=replan_count,
-            score=score
         )
 
         error_data = None
@@ -168,11 +148,11 @@ class Agent:
             status="success" if success else "failed",
             result=str(state.history[-1].get("result")) if state.history else None,
             error=error_data,
-            score=score,
+            score=last_score,
             replans=replan_count
         )
 
-        timeline.record("complete", metadata={"status": "success" if success else "failed"})
+        timeline.record("complete")
 
         response = {
             "execution_id": state.execution_id,
@@ -180,22 +160,13 @@ class Agent:
             "status": state.status,
             "steps": state.history,
             "replans": replan_count,
+            "score": last_score,
             "strategy": strategy.id,
             "profile": profile.id,
-            "cognition": {
-                "level": cognition_config.level,
-                "max_steps": cognition_config.max_steps,
-                "allow_replan": cognition_config.allow_replan,
-                "verification_level": cognition_config.verification_level
-            },
+            "cognition": cognition_config.level,
             "timeline": timeline.get_summary(),
-            "meta_state": self.meta_manager.get_state().model_dump(),
-            "memory_summary": memory.summary(),
             "tenant_id": tenant_id
         }
-
-        if last_critic_result:
-            response["critic"] = last_critic_result.to_dict()
 
         if debug:
             response["debug"] = debug_data
