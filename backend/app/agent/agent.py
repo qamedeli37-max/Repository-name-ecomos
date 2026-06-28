@@ -6,6 +6,7 @@ from app.agent.strategy import StrategyRegistry
 from app.agent.meta import MetaStateManager
 from app.agent.profile import ProfileManager
 from app.agent.cognition import get_cognition_config
+from app.agent.timeline import ExecutionTimeline
 from app.services.execution_service import ExecutionService
 
 MAX_REPLANS_BASE = 3
@@ -24,7 +25,11 @@ class Agent:
         self.state_manager = StateManager()
         self.execution_service = ExecutionService()
 
-    def run(self, user_input: str, tenant_id: str = None):
+    def run(self, user_input: str, tenant_id: str = None, debug: bool = False):
+        timeline = ExecutionTimeline()
+        timeline.start()
+        debug_data = {} if debug else None
+
         goal = self._parse_goal(user_input)
         goal_type = self._detect_goal_type(goal.get("goal", ""))
         state = self.state_manager.create(goal=goal.get("goal", ""), plan=[], tenant_id=tenant_id)
@@ -33,6 +38,12 @@ class Agent:
         profile = self.profile_manager.get_current()
         cognition_config = get_cognition_config(profile.id)
         meta_state = self.meta_manager.get_state()
+
+        if debug:
+            debug_data["input"] = {"goal": goal, "tenant_id": tenant_id}
+            debug_data["strategy"] = strategy.id
+            debug_data["profile"] = profile.id
+            debug_data["cognition"] = cognition_config.model_dump()
 
         self.execution_service.log_start(
             execution_id=state.execution_id,
@@ -43,16 +54,33 @@ class Agent:
             cognition=cognition_config.level
         )
 
+        timeline.record("init", metadata={"goal": state.goal})
+
         max_replans = profile.max_replans if cognition_config.allow_replan else 0
         replan_count = 0
         last_critic_result = None
 
         while state.status != "done" and replan_count < max_replans:
             plan_data = self.planner.plan(goal, self.tools, memory, strategy, meta_state, profile, cognition_config)
+            timeline.record("planning", metadata={"plans_count": len(plan_data.get("plans", []))})
+
             plans = plan_data.get("plans", [])
 
+            if debug:
+                debug_data["plans"] = plans
+
             critic_result = self.critic.evaluate(goal, plans, memory, strategy, meta_state, profile, cognition_config)
+            timeline.record("critic", metadata={"selected": critic_result.selected_plan, "scores": critic_result.score_map})
+
             last_critic_result = critic_result
+
+            if debug:
+                debug_data["critic"] = {
+                    "selected_plan": critic_result.selected_plan,
+                    "score_map": critic_result.score_map,
+                    "suggestions": critic_result.suggestions,
+                    "meta_analysis": critic_result.meta_analysis
+                }
 
             if critic_result.suggested_strategy:
                 old_id = self.strategy_registry.current_strategy_id
@@ -73,6 +101,7 @@ class Agent:
                 plans = plan_data.get("plans", [])
                 critic_result = self.critic.evaluate(goal, plans, memory, strategy, meta_state, profile, cognition_config)
                 last_critic_result = critic_result
+                timeline.record("replan", metadata={"reason": "critic_suggested_switch"})
 
             selected_id = critic_result.selected_plan
             selected_plan = critic_result.plan_details.get(selected_id, plans[0])
@@ -80,6 +109,11 @@ class Agent:
             self.state_manager.save(state, tenant_id)
 
             exec_result = self.executor.execute_plan(state.plan, profile, cognition_config)
+            timeline.record("execution", metadata={"steps_count": len(exec_result.steps)})
+
+            if debug:
+                debug_data["tool_args"] = [{"tool": s.get("tool"), "args": s.get("args", {})} for s in state.plan]
+                debug_data["execution_results"] = exec_result.steps
 
             for step_result in exec_result.steps:
                 self.state_manager.append_result(state, step_result, tenant_id)
@@ -138,6 +172,8 @@ class Agent:
             replans=replan_count
         )
 
+        timeline.record("complete", metadata={"status": "success" if success else "failed"})
+
         response = {
             "execution_id": state.execution_id,
             "goal": state.goal,
@@ -152,6 +188,7 @@ class Agent:
                 "allow_replan": cognition_config.allow_replan,
                 "verification_level": cognition_config.verification_level
             },
+            "timeline": timeline.get_summary(),
             "meta_state": self.meta_manager.get_state().model_dump(),
             "memory_summary": memory.summary(),
             "tenant_id": tenant_id
@@ -159,6 +196,9 @@ class Agent:
 
         if last_critic_result:
             response["critic"] = last_critic_result.to_dict()
+
+        if debug:
+            response["debug"] = debug_data
 
         return response
 

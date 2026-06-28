@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, HTTPException, Header, Query
 from pydantic import BaseModel
 from typing import Optional
 from app.tools.registry import build_tools
@@ -41,7 +41,7 @@ class AgentRequest(BaseModel):
 
 
 @router.post("/agent")
-def run_agent(req: AgentRequest, x_api_key: Optional[str] = Header(None)):
+def run_agent(req: AgentRequest, x_api_key: Optional[str] = Header(None), debug: bool = Query(False)):
     tenant_manager = get_tenant_manager()
     tenant = None
     tenant_id = "default"
@@ -61,7 +61,7 @@ def run_agent(req: AgentRequest, x_api_key: Optional[str] = Header(None)):
         if not user_input:
             return error_response("validation_error", "input or goal is required")
 
-        raw = agent.run(user_input, tenant_id=tenant_id)
+        raw = agent.run(user_input, tenant_id=tenant_id, debug=debug)
         return format_agent_response(raw)
     except Exception as e:
         return error_response("internal_error", str(e))

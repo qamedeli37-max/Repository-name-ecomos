@@ -31,6 +31,8 @@ class AgentResponse(BaseModel):
     meta: AgentMeta
     error: Optional[ErrorDetail] = None
     tenant_id: Optional[str] = None
+    timeline: Optional[dict] = None
+    debug: Optional[dict] = None
 
 
 class ErrorResponse(BaseModel):
@@ -98,7 +100,9 @@ def format_agent_response(raw: dict) -> AgentResponse:
         steps=formatted_steps,
         meta=meta,
         error=error,
-        tenant_id=raw.get("tenant_id")
+        tenant_id=raw.get("tenant_id"),
+        timeline=raw.get("timeline"),
+        debug=raw.get("debug")
     )
 
 
