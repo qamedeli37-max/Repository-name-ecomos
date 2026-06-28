@@ -19,32 +19,32 @@ class PlannerAgent:
         else:
             self.client = None
 
-    def plan(self, goal: dict, tools: dict, memory=None, strategy=None, meta_state=None, profile=None, cognition=None) -> dict:
+    def plan(self, goal: dict, tools: dict, memory=None, strategy=None, meta_state=None, profile=None, cognition_config=None) -> dict:
         if self.client:
-            return self._llm_plan(goal, tools, memory, strategy, meta_state, profile, cognition)
-        return {"plans": [{"id": "a", "steps": self._rule_plan(goal, memory, strategy, meta_state, profile, cognition)}]}
+            return self._llm_plan(goal, tools, memory, strategy, meta_state, profile, cognition_config)
+        return {"plans": [{"id": "a", "steps": self._rule_plan(goal, memory, strategy, meta_state, profile, cognition_config)}]}
 
-    def refine_plan(self, goal: dict, tools: dict, feedback: dict, memory=None, strategy=None, meta_state=None, profile=None, cognition=None) -> dict:
+    def refine_plan(self, goal: dict, tools: dict, feedback: dict, memory=None, strategy=None, meta_state=None, profile=None, cognition_config=None) -> dict:
         if self.client:
-            return self._llm_refine(goal, tools, feedback, memory, strategy, meta_state, profile, cognition)
-        return {"plans": [{"id": "a", "steps": self._rule_refine(goal, feedback, memory, strategy, meta_state, profile, cognition)}]}
+            return self._llm_refine(goal, tools, feedback, memory, strategy, meta_state, profile, cognition_config)
+        return {"plans": [{"id": "a", "steps": self._rule_refine(goal, feedback, memory, strategy, meta_state, profile, cognition_config)}]}
 
-    def _llm_plan(self, goal: dict, tools: dict, memory=None, strategy=None, meta_state=None, profile=None, cognition=None):
+    def _llm_plan(self, goal: dict, tools: dict, memory=None, strategy=None, meta_state=None, profile=None, cognition_config=None):
         tool_list = "\n".join(tools.keys())
         memory_context = self._build_memory_context(goal, memory)
         strategy_context = self._build_strategy_context(strategy)
         meta_context = self._build_meta_context(meta_state)
         profile_context = self._build_profile_context(profile)
-        cog_context = self._build_cognition_context(cognition)
+        cog_context = self._build_cognition_context(cognition_config)
 
         reasoning_note = ""
-        if cognition:
-            if cognition.level == "shallow":
-                reasoning_note = "Keep reasoning minimal. Generate concise plans only."
-            elif cognition.level == "deep":
-                reasoning_note = "Analyze thoroughly. Consider edge cases, dependencies, and potential issues."
+        if cognition_config:
+            if cognition_config.level == "shallow":
+                reasoning_note = "Keep reasoning minimal. Single step plan only."
+            elif cognition_config.level == "deep":
+                reasoning_note = "Analyze thoroughly. Multi-step plan with fallback steps."
             else:
-                reasoning_note = "Balance speed and thoroughness."
+                reasoning_note = "Balance speed and thoroughness. 2-5 steps."
 
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",
@@ -54,6 +54,7 @@ class PlannerAgent:
                     "content": f"""You are a task planner. Generate 2-3 different plans.
 
 {reasoning_note}
+Max steps allowed: {cognition_config.max_steps if cognition_config else 5}.
 Follow the active profile's planner style.
 Use meta-state insights to improve planning.
 Follow the active strategy constraints.
@@ -84,19 +85,19 @@ Available tools:
         content = response.choices[0].message.content
         return json.loads(content)
 
-    def _llm_refine(self, goal: dict, tools: dict, feedback: dict, memory=None, strategy=None, meta_state=None, profile=None, cognition=None):
+    def _llm_refine(self, goal: dict, tools: dict, feedback: dict, memory=None, strategy=None, meta_state=None, profile=None, cognition_config=None):
         tool_list = "\n".join(tools.keys())
         memory_context = self._build_memory_context(goal, memory)
         strategy_context = self._build_strategy_context(strategy)
         meta_context = self._build_meta_context(meta_state)
         profile_context = self._build_profile_context(profile)
-        cog_context = self._build_cognition_context(cognition)
+        cog_context = self._build_cognition_context(cognition_config)
 
         reasoning_note = ""
-        if cognition:
-            if cognition.level == "shallow":
-                reasoning_note = "Minimal reasoning. Fix the error quickly."
-            elif cognition.level == "deep":
+        if cognition_config:
+            if cognition_config.level == "shallow":
+                reasoning_note = "Minimal reasoning. Quick fix."
+            elif cognition_config.level == "deep":
                 reasoning_note = "Deep analysis. Understand root cause before fixing."
             else:
                 reasoning_note = "Balanced approach to fixing."
@@ -109,6 +110,7 @@ Available tools:
                     "content": f"""You are a task planner. A previous plan failed.
 
 {reasoning_note}
+Max steps: {cognition_config.max_steps if cognition_config else 5}.
 Follow the active profile's planner style.
 Use meta-state insights to improve planning.
 Follow the active strategy constraints.
@@ -212,15 +214,16 @@ Available tools:
             parts.append("Generate comprehensive plans, include verification steps")
         return "\n".join(parts)
 
-    def _build_cognition_context(self, cognition) -> str:
-        if not cognition:
+    def _build_cognition_context(self, cognition_config) -> str:
+        if not cognition_config:
             return ""
-        parts = [f"Cognition level: {cognition.level}"]
-        parts.append(f"Reasoning steps: {cognition.reasoning_steps}")
-        parts.append(f"Planning depth: {cognition.planning_depth}")
+        parts = [f"Cognition: level={cognition_config.level}"]
+        parts.append(f"Max steps: {cognition_config.max_steps}")
+        parts.append(f"Allow replan: {cognition_config.allow_replan}")
+        parts.append(f"Verification: {cognition_config.verification_level}")
         return "\n".join(parts)
 
-    def _rule_plan(self, goal: dict, memory=None, strategy=None, meta_state=None, profile=None, cognition=None):
+    def _rule_plan(self, goal: dict, memory=None, strategy=None, meta_state=None, profile=None, cognition_config=None):
         text = goal.get("goal", "").lower()
         steps = []
         avoid_tools = set()
@@ -281,12 +284,12 @@ Available tools:
 
         return steps
 
-    def _rule_refine(self, goal: dict, feedback: dict, memory=None, strategy=None, meta_state=None, profile=None, cognition=None):
+    def _rule_refine(self, goal: dict, feedback: dict, memory=None, strategy=None, meta_state=None, profile=None, cognition_config=None):
         failed_step = feedback.get("failed_step", {})
         tool_name = failed_step.get("tool", "")
         if tool_name == "product.create":
             return [{"tool": "product.list", "args": {}}]
-        return self._rule_plan(goal, memory, strategy, meta_state, profile, cognition)
+        return self._rule_plan(goal, memory, strategy, meta_state, profile, cognition_config)
 
     def _parse_product_create(self, text: str):
         price_match = re.search(r'(\d+(?:\.\d+)?)', text)

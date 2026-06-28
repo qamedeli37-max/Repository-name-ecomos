@@ -1,31 +1,35 @@
 from pydantic import BaseModel
 
 
-class CognitionLevel(BaseModel):
+class CognitionConfig(BaseModel):
     level: str  # shallow, medium, deep
-    reasoning_steps: int  # 1-10
-    planning_depth: str  # low, high
+    max_steps: int
+    allow_replan: bool
+    verification_level: str  # none, light, strict
     description: str = ""
 
 
-COGNITION_LEVELS = {
-    "shallow": CognitionLevel(
+COGNITION_CONFIGS = {
+    "shallow": CognitionConfig(
         level="shallow",
-        reasoning_steps=2,
-        planning_depth="low",
-        description="fast decisions, minimal reasoning"
+        max_steps=1,
+        allow_replan=False,
+        verification_level="none",
+        description="fast decisions, no verification"
     ),
-    "medium": CognitionLevel(
+    "medium": CognitionConfig(
         level="medium",
-        reasoning_steps=5,
-        planning_depth="medium",
-        description="balanced reasoning and planning"
+        max_steps=5,
+        allow_replan=True,
+        verification_level="light",
+        description="balanced reasoning with light validation"
     ),
-    "deep": CognitionLevel(
+    "deep": CognitionConfig(
         level="deep",
-        reasoning_steps=8,
-        planning_depth="high",
-        description="thorough analysis, comprehensive planning"
+        max_steps=10,
+        allow_replan=True,
+        verification_level="strict",
+        description="thorough analysis, full critic + retry"
     )
 }
 
@@ -38,10 +42,10 @@ PROFILE_COGNITION_MAP = {
 }
 
 
-def get_cognition_level(profile_id: str) -> CognitionLevel:
-    level_id = PROFILE_COGNITION_MAP.get(profile_id, "medium")
-    return COGNITION_LEVELS[level_id]
+def get_cognition_config(profile_id: str) -> CognitionConfig:
+    level = PROFILE_COGNITION_MAP.get(profile_id, "medium")
+    return COGNITION_CONFIGS[level]
 
 
-def get_cognition_for_level(level: str) -> CognitionLevel:
-    return COGNITION_LEVELS.get(level, COGNITION_LEVELS["medium"])
+def get_cognition_config_by_level(level: str) -> CognitionConfig:
+    return COGNITION_CONFIGS.get(level, COGNITION_CONFIGS["medium"])

@@ -29,10 +29,29 @@ class ExecutorAgent:
         except Exception:
             self.client = None
 
-    def execute_plan(self, plan: list[dict], profile=None) -> ExecuteResult:
+    def execute_plan(self, plan: list[dict], profile=None, cognition_config=None) -> ExecuteResult:
         results = []
-        retry_enabled = profile.retry_enabled if profile else True
-        auto_fix = profile.auto_fix if profile else True
+
+        retry_enabled = True
+        auto_fix = True
+        verification = "light"
+
+        if cognition_config:
+            if cognition_config.level == "shallow":
+                retry_enabled = False
+                auto_fix = False
+                verification = "none"
+            elif cognition_config.level == "deep":
+                retry_enabled = True
+                auto_fix = True
+                verification = "strict"
+            else:
+                retry_enabled = profile.retry_enabled if profile else True
+                auto_fix = profile.auto_fix if profile else True
+                verification = "light"
+        elif profile:
+            retry_enabled = profile.retry_enabled
+            auto_fix = profile.auto_fix
 
         for step in plan:
             result = self._execute_with_retry(step, retry_enabled, auto_fix)
@@ -41,9 +60,18 @@ class ExecutorAgent:
         has_failure = any(r.get("status") == "failed" for r in results)
         failed_step = next((r for r in results if r.get("status") == "failed"), None)
 
+        requires_replan = False
+        if has_failure:
+            if verification == "none":
+                requires_replan = False
+            elif verification == "light":
+                requires_replan = False
+            else:
+                requires_replan = True
+
         return ExecuteResult(
             steps=results,
-            requires_replan=has_failure,
+            requires_replan=requires_replan,
             feedback=failed_step if failed_step else {}
         )
 

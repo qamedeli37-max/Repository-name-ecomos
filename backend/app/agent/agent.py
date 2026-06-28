@@ -5,7 +5,7 @@ from app.agent.state_manager import StateManager
 from app.agent.strategy import StrategyRegistry
 from app.agent.meta import MetaStateManager
 from app.agent.profile import ProfileManager
-from app.agent.cognition import get_cognition_level
+from app.agent.cognition import get_cognition_config
 
 MAX_REPLANS_BASE = 3
 MIN_SCORE = 0.7
@@ -29,18 +29,18 @@ class Agent:
         memory = self.state_manager.get_memory()
         strategy = self.strategy_registry.get_current()
         profile = self.profile_manager.get_current()
-        cognition = get_cognition_level(profile.id)
+        cognition_config = get_cognition_config(profile.id)
         meta_state = self.meta_manager.get_state()
 
-        max_replans = profile.max_replans
+        max_replans = profile.max_replans if cognition_config.allow_replan else 0
         replan_count = 0
         last_critic_result = None
 
         while state.status != "done" and replan_count < max_replans:
-            plan_data = self.planner.plan(goal, self.tools, memory, strategy, meta_state, profile, cognition)
+            plan_data = self.planner.plan(goal, self.tools, memory, strategy, meta_state, profile, cognition_config)
             plans = plan_data.get("plans", [])
 
-            critic_result = self.critic.evaluate(goal, plans, memory, strategy, meta_state, profile, cognition)
+            critic_result = self.critic.evaluate(goal, plans, memory, strategy, meta_state, profile, cognition_config)
             last_critic_result = critic_result
 
             if critic_result.suggested_strategy:
@@ -54,13 +54,13 @@ class Agent:
                 new_profile = self.profile_manager.switch_to(critic_result.suggested_profile)
                 if old_pid != new_profile.id:
                     profile = new_profile
-                    cognition = get_cognition_level(profile.id)
-                    max_replans = profile.max_replans
+                    cognition_config = get_cognition_config(profile.id)
+                    max_replans = profile.max_replans if cognition_config.allow_replan else 0
 
             if critic_result.suggested_strategy or critic_result.suggested_profile:
-                plan_data = self.planner.plan(goal, self.tools, memory, strategy, meta_state, profile, cognition)
+                plan_data = self.planner.plan(goal, self.tools, memory, strategy, meta_state, profile, cognition_config)
                 plans = plan_data.get("plans", [])
-                critic_result = self.critic.evaluate(goal, plans, memory, strategy, meta_state, profile, cognition)
+                critic_result = self.critic.evaluate(goal, plans, memory, strategy, meta_state, profile, cognition_config)
                 last_critic_result = critic_result
 
             selected_id = critic_result.selected_plan
@@ -68,7 +68,7 @@ class Agent:
             state.plan = selected_plan.get("steps", [])
             self.state_manager.save(state)
 
-            exec_result = self.executor.execute_plan(state.plan, profile)
+            exec_result = self.executor.execute_plan(state.plan, profile, cognition_config)
 
             for step_result in exec_result.steps:
                 self.state_manager.append_result(state, step_result)
@@ -77,12 +77,12 @@ class Agent:
                         step=step_result.get("tool", "unknown"),
                         error=step_result.get("error", "unknown"),
                         goal_type=goal_type,
-                        context={"execution_id": state.execution_id, "strategy": strategy.id, "profile": profile.id, "cognition": cognition.level}
+                        context={"execution_id": state.execution_id, "strategy": strategy.id, "profile": profile.id, "cognition": cognition_config.level}
                     )
 
             if exec_result.requires_replan and replan_count < max_replans - 1:
                 replan_count += 1
-                refined = self.planner.refine_plan(goal, self.tools, exec_result.feedback, memory, strategy, meta_state, profile, cognition)
+                refined = self.planner.refine_plan(goal, self.tools, exec_result.feedback, memory, strategy, meta_state, profile, cognition_config)
                 state.plan = []
                 self.state_manager.save(state)
             else:
@@ -118,9 +118,10 @@ class Agent:
             "strategy": strategy.id,
             "profile": profile.id,
             "cognition": {
-                "level": cognition.level,
-                "reasoning_steps": cognition.reasoning_steps,
-                "planning_depth": cognition.planning_depth
+                "level": cognition_config.level,
+                "max_steps": cognition_config.max_steps,
+                "allow_replan": cognition_config.allow_replan,
+                "verification_level": cognition_config.verification_level
             },
             "meta_state": self.meta_manager.get_state().model_dump(),
             "memory_summary": memory.summary()
