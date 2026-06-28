@@ -23,6 +23,11 @@ class PlannerAgent:
             return self._llm_plan(goal, tools)
         return {"plan": self._rule_plan(goal)}
 
+    def refine_plan(self, goal: dict, tools: dict, feedback: dict) -> dict:
+        if self.client:
+            return self._llm_refine(goal, tools, feedback)
+        return {"plan": self._rule_refine(goal, feedback)}
+
     def _llm_plan(self, goal: dict, tools: dict):
         tool_list = "\n".join(tools.keys())
         response = self.client.chat.completions.create(
@@ -54,6 +59,40 @@ Available tools:
         content = response.choices[0].message.content
         return json.loads(content)
 
+    def _llm_refine(self, goal: dict, tools: dict, feedback: dict):
+        tool_list = "\n".join(tools.keys())
+        response = self.client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"""You are a task planner. A previous plan failed.
+
+Create a NEW plan that avoids the error.
+
+Return ONLY valid JSON:
+{{
+    "goal": "the goal description",
+    "plan": [
+        {{
+            "tool": "tool.name",
+            "args": {{}}
+        }}
+    ]
+}}
+
+Available tools:
+{tool_list}"""
+                },
+                {
+                    "role": "user",
+                    "content": f"Goal: {json.dumps(goal)}\nFailed step: {json.dumps(feedback.get('failed_step'))}\nError: {feedback.get('error')}"
+                }
+            ]
+        )
+        content = response.choices[0].message.content
+        return json.loads(content)
+
     def _rule_plan(self, goal: dict):
         text = goal.get("goal", "").lower()
         steps = []
@@ -73,6 +112,15 @@ Available tools:
             steps.append({"tool": "product.list", "args": {}})
 
         return steps
+
+    def _rule_refine(self, goal: dict, feedback: dict):
+        failed_step = feedback.get("failed_step", {})
+        tool_name = failed_step.get("tool", "")
+
+        if tool_name == "product.create":
+            return {"plan": [{"tool": "product.list", "args": {}}]}
+
+        return self._rule_plan(goal)
 
     def _parse_product_create(self, text: str):
         price_match = re.search(r'(\d+(?:\.\d+)?)', text)

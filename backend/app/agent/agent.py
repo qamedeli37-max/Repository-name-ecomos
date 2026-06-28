@@ -2,6 +2,8 @@ from app.agent.planner import PlannerAgent
 from app.agent.executor import ExecutorAgent
 from app.agent.state_manager import StateManager
 
+MAX_REPLANS = 3
+
 
 class Agent:
     def __init__(self, tools: dict):
@@ -12,12 +14,36 @@ class Agent:
 
     def run(self, user_input: str):
         goal = self._parse_goal(user_input)
-        plan_data = self.planner.plan(goal, self.tools)
-        state = self.state_manager.create(
-            goal=goal.get("goal", ""),
-            plan=plan_data.get("plan", [])
-        )
-        return self.execute_loop(state)
+        state = self.state_manager.create(goal=goal.get("goal", ""), plan=[])
+
+        replan_count = 0
+        while state.status != "done" and replan_count < MAX_REPLANS:
+            plan_data = self.planner.plan(goal, self.tools)
+            state.plan = plan_data.get("plan", [])
+            self.state_manager.save(state)
+
+            exec_result = self.executor.execute_plan(state.plan)
+
+            for step_result in exec_result.steps:
+                self.state_manager.append_result(state, step_result)
+
+            if exec_result.requires_replan and replan_count < MAX_REPLANS - 1:
+                replan_count += 1
+                refined = self.planner.refine_plan(goal, self.tools, exec_result.feedback)
+                state.plan = refined.get("plan", [])
+                self.state_manager.save(state)
+            else:
+                break
+
+        self.state_manager.mark_done(state)
+
+        return {
+            "execution_id": state.execution_id,
+            "goal": state.goal,
+            "status": state.status,
+            "steps": state.history,
+            "replans": replan_count
+        }
 
     def resume(self, execution_id: str):
         state = self.state_manager.get(execution_id)

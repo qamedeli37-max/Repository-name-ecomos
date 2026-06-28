@@ -7,6 +7,23 @@ load_dotenv()
 MAX_RETRY = 2
 
 
+class ExecuteResult:
+    def __init__(self):
+        self.steps: list[dict] = []
+        self.requires_replan = False
+        self.feedback: dict = {}
+
+    def add_step(self, result: dict):
+        self.steps.append(result)
+
+    def request_replan(self, failed_step: dict, error: str):
+        self.requires_replan = True
+        self.feedback = {
+            "failed_step": failed_step,
+            "error": error
+        }
+
+
 class ExecutorAgent:
     def __init__(self, tools: dict):
         self.tools = tools
@@ -19,6 +36,19 @@ class ExecutorAgent:
             self.client = OpenAI(api_key=api_key)
         else:
             self.client = None
+
+    def execute_plan(self, plan: list[dict]) -> ExecuteResult:
+        result = ExecuteResult()
+
+        for step in plan:
+            step_result = self.execute_step(step)
+            result.add_step(step_result)
+
+            if step_result.get("status") == "failed":
+                result.request_replan(step, step_result.get("error", "unknown"))
+                break
+
+        return result
 
     def execute_step(self, step: dict) -> dict:
         tool = self.tools.get(step.get("tool"))
