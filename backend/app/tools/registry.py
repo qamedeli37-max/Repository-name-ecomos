@@ -1,4 +1,15 @@
 from app.tools.base import Tool
+from app.tools.product import ProductCreateTool, ProductUpdateTool, ProductGetTool
+from app.services.product_service import ProductService
+
+
+def build_tools(product_service: ProductService) -> dict[str, Tool]:
+    tools = [
+        ProductCreateTool(product_service),
+        ProductUpdateTool(product_service),
+        ProductGetTool(product_service),
+    ]
+    return {tool.name: tool for tool in tools}
 
 
 class ToolRegistry:
