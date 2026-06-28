@@ -6,6 +6,7 @@ from app.agent.strategy import StrategyRegistry
 from app.agent.meta import MetaStateManager
 from app.agent.profile import ProfileManager
 from app.agent.cognition import get_cognition_config
+from app.services.execution_service import ExecutionService
 
 MAX_REPLANS_BASE = 3
 MIN_SCORE = 0.7
@@ -21,6 +22,7 @@ class Agent:
         self.critic = CriticAgent()
         self.executor = ExecutorAgent(tools)
         self.state_manager = StateManager()
+        self.execution_service = ExecutionService()
 
     def run(self, user_input: str, tenant_id: str = None):
         goal = self._parse_goal(user_input)
@@ -31,6 +33,15 @@ class Agent:
         profile = self.profile_manager.get_current()
         cognition_config = get_cognition_config(profile.id)
         meta_state = self.meta_manager.get_state()
+
+        self.execution_service.log_start(
+            execution_id=state.execution_id,
+            goal=state.goal,
+            tenant_id=tenant_id,
+            strategy=strategy.id,
+            profile=profile.id,
+            cognition=cognition_config.level
+        )
 
         max_replans = profile.max_replans if cognition_config.allow_replan else 0
         replan_count = 0
@@ -72,6 +83,7 @@ class Agent:
 
             for step_result in exec_result.steps:
                 self.state_manager.append_result(state, step_result, tenant_id)
+                self.execution_service.log_step(state.execution_id, step_result)
                 if step_result.get("status") == "failed":
                     self.state_manager.record_failure(
                         step=step_result.get("tool", "unknown"),
@@ -111,6 +123,21 @@ class Agent:
             score=score
         )
 
+        error_data = None
+        if not success:
+            failed_step = next((s for s in state.history if s.get("status") == "failed"), None)
+            if failed_step:
+                error_data = {"type": "tool_error", "message": failed_step.get("error", "unknown")}
+
+        self.execution_service.log_complete(
+            execution_id=state.execution_id,
+            status="success" if success else "failed",
+            result=str(state.history[-1].get("result")) if state.history else None,
+            error=error_data,
+            score=score,
+            replans=replan_count
+        )
+
         response = {
             "execution_id": state.execution_id,
             "goal": state.goal,
@@ -142,6 +169,7 @@ class Agent:
         if state.status == "done":
             return {"error": "execution already done"}
         state.status = "running"
+        self.execution_service.log_complete(execution_id=execution_id, status="running")
         return self.execute_loop(state, tenant_id)
 
     def execute_loop(self, state, tenant_id: str = None):
@@ -149,8 +177,14 @@ class Agent:
             step = state.plan[state.current_step]
             result = self.executor.execute_step(step)
             self.state_manager.append_result(state, result, tenant_id)
+            self.execution_service.log_step(state.execution_id, result)
 
         self.state_manager.mark_done(state, True, tenant_id)
+        self.execution_service.log_complete(
+            execution_id=state.execution_id,
+            status="success",
+            result=str(state.history[-1].get("result")) if state.history else None
+        )
 
         return {
             "execution_id": state.execution_id,
