@@ -3,10 +3,13 @@ import os
 import re
 from uuid import uuid4
 from dotenv import load_dotenv
+from app.agent.state import ExecutionState, StateStore
 
 load_dotenv()
 
 MAX_RETRY = 2
+
+store = StateStore()
 
 
 class Agent:
@@ -31,31 +34,38 @@ class Agent:
         else:
             plan_data = {"plan": self._rule_plan(goal)}
 
-        return self._execute(execution_id, goal, plan_data)
+        state = ExecutionState(
+            execution_id=execution_id,
+            goal=goal.get("goal", ""),
+            plan=plan_data.get("plan", []),
+            status="running",
+            current_step=0,
+            history=[]
+        )
+        store.save(state)
+        return self.execute_loop(state)
 
-    def _parse_goal(self, user_input: str):
-        if isinstance(user_input, dict):
-            return {
-                "goal": user_input.get("goal", ""),
-                "constraints": user_input.get("constraints", []),
-                "context": user_input.get("context", {})
-            }
-        return {
-            "goal": user_input,
-            "constraints": [],
-            "context": {}
-        }
+    def resume(self, execution_id: str):
+        state = store.get(execution_id)
+        if not state:
+            return {"error": "execution not found"}
+        if state.status == "done":
+            return {"error": "execution already done"}
+        state.status = "running"
+        return self.execute_loop(state)
 
-    def _execute(self, execution_id: str, goal: dict, plan_data: dict):
-        results = []
-        for step in plan_data.get("plan", []):
+    def execute_loop(self, state: ExecutionState):
+        while state.status != "done" and state.current_step < len(state.plan):
+            step = state.plan[state.current_step]
             tool = self.tools.get(step.get("tool"))
+
             if not tool:
-                results.append({
+                state.history.append({
                     "tool": step.get("tool"),
                     "status": "failed",
                     "error": f"tool not found: {step.get('tool')}"
                 })
+                state.current_step += 1
                 continue
 
             attempt = 0
@@ -73,22 +83,29 @@ class Agent:
                         step = self.fix_step(step, last_error)
 
             if success:
-                results.append({
+                state.history.append({
                     "tool": step.get("tool"),
                     "status": "success",
                     "result": result
                 })
             else:
-                results.append({
+                state.history.append({
                     "tool": step.get("tool"),
                     "status": "failed",
                     "error": last_error
                 })
 
+            state.current_step += 1
+            store.save(state)
+
+        state.status = "done"
+        store.save(state)
+
         return {
-            "execution_id": execution_id,
-            "goal": goal.get("goal", ""),
-            "steps": results
+            "execution_id": state.execution_id,
+            "goal": state.goal,
+            "status": state.status,
+            "steps": state.history
         }
 
     # ========== LLM Fix ==========
@@ -140,10 +157,7 @@ Return ONLY valid JSON:
 Available tools:
 {tool_list}"""
                 },
-                {
-                    "role": "user",
-                    "content": json.dumps(goal)
-                }
+                {"role": "user", "content": json.dumps(goal)}
             ]
         )
         content = response.choices[0].message.content
@@ -170,6 +184,19 @@ Available tools:
             steps.append({"tool": "product.list", "args": {}})
 
         return steps
+
+    def _parse_goal(self, user_input):
+        if isinstance(user_input, dict):
+            return {
+                "goal": user_input.get("goal", ""),
+                "constraints": user_input.get("constraints", []),
+                "context": user_input.get("context", {})
+            }
+        return {
+            "goal": user_input,
+            "constraints": [],
+            "context": {}
+        }
 
     def _parse_product_create(self, text: str):
         price_match = re.search(r'(\d+(?:\.\d+)?)', text)
