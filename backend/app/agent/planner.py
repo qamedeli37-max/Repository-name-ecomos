@@ -18,18 +18,20 @@ class PlannerAgent:
         else:
             self.client = None
 
-    def plan(self, goal: dict, tools: dict) -> dict:
+    def plan(self, goal: dict, tools: dict, memory=None) -> dict:
         if self.client:
-            return self._llm_plan(goal, tools)
-        return {"plan": self._rule_plan(goal)}
+            return self._llm_plan(goal, tools, memory)
+        return {"plan": self._rule_plan(goal, memory)}
 
-    def refine_plan(self, goal: dict, tools: dict, feedback: dict) -> dict:
+    def refine_plan(self, goal: dict, tools: dict, feedback: dict, memory=None) -> dict:
         if self.client:
-            return self._llm_refine(goal, tools, feedback)
-        return {"plan": self._rule_refine(goal, feedback)}
+            return self._llm_refine(goal, tools, feedback, memory)
+        return {"plan": self._rule_refine(goal, feedback, memory)}
 
-    def _llm_plan(self, goal: dict, tools: dict):
+    def _llm_plan(self, goal: dict, tools: dict, memory=None):
         tool_list = "\n".join(tools.keys())
+        memory_context = self._build_memory_context(goal, memory)
+
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
@@ -37,7 +39,7 @@ class PlannerAgent:
                     "role": "system",
                     "content": f"""You are a task planner.
 
-Given a goal, create a plan with steps.
+Given a goal and past experience, create a plan with steps.
 
 Return ONLY valid JSON:
 {{
@@ -51,7 +53,9 @@ Return ONLY valid JSON:
 }}
 
 Available tools:
-{tool_list}"""
+{tool_list}
+
+{memory_context}"""
                 },
                 {"role": "user", "content": json.dumps(goal)}
             ]
@@ -59,8 +63,10 @@ Available tools:
         content = response.choices[0].message.content
         return json.loads(content)
 
-    def _llm_refine(self, goal: dict, tools: dict, feedback: dict):
+    def _llm_refine(self, goal: dict, tools: dict, feedback: dict, memory=None):
         tool_list = "\n".join(tools.keys())
+        memory_context = self._build_memory_context(goal, memory)
+
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
@@ -82,7 +88,9 @@ Return ONLY valid JSON:
 }}
 
 Available tools:
-{tool_list}"""
+{tool_list}
+
+{memory_context}"""
                 },
                 {
                     "role": "user",
@@ -93,7 +101,23 @@ Available tools:
         content = response.choices[0].message.content
         return json.loads(content)
 
-    def _rule_plan(self, goal: dict):
+    def _build_memory_context(self, goal: dict, memory) -> str:
+        if not memory:
+            return ""
+
+        goal_text = goal.get("goal", "")
+        successful = memory.get_successful_plans(goal_text)
+        failed = memory.get_failed_patterns(goal_text)
+
+        parts = []
+        if successful:
+            parts.append(f"Past successful plans: {json.dumps(successful[:2])}")
+        if failed:
+            parts.append(f"Past failed steps to avoid: {json.dumps(failed[:2])}")
+
+        return "\n".join(parts) if parts else ""
+
+    def _rule_plan(self, goal: dict, memory=None):
         text = goal.get("goal", "").lower()
         steps = []
 
@@ -113,14 +137,14 @@ Available tools:
 
         return steps
 
-    def _rule_refine(self, goal: dict, feedback: dict):
+    def _rule_refine(self, goal: dict, feedback: dict, memory=None):
         failed_step = feedback.get("failed_step", {})
         tool_name = failed_step.get("tool", "")
 
         if tool_name == "product.create":
             return {"plan": [{"tool": "product.list", "args": {}}]}
 
-        return self._rule_plan(goal)
+        return {"plan": self._rule_plan(goal, memory)}
 
     def _parse_product_create(self, text: str):
         price_match = re.search(r'(\d+(?:\.\d+)?)', text)

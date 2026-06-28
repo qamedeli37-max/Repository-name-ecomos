@@ -1,10 +1,12 @@
 from uuid import uuid4
 from app.agent.state import ExecutionState, StateStore
+from app.agent.memory import ExecutionMemory, ExecutionRecord
 
 
 class StateManager:
     def __init__(self):
         self.store = StateStore()
+        self.memory = ExecutionMemory()
 
     def create(self, goal: str, plan: list[dict]) -> ExecutionState:
         state = ExecutionState(
@@ -24,11 +26,25 @@ class StateManager:
     def save(self, state: ExecutionState):
         self.store.save(state)
 
-    def mark_done(self, state: ExecutionState):
+    def mark_done(self, state: ExecutionState, success: bool = True):
         state.status = "done"
         self.store.save(state)
+
+        failed_steps = [s for s in state.history if s.get("status") == "failed"]
+        successful_plan = [s for s in state.history if s.get("status") == "success"]
+
+        record = ExecutionRecord(
+            goal=state.goal,
+            success=success and len(failed_steps) == 0,
+            failed_steps=failed_steps,
+            successful_plan=successful_plan
+        )
+        self.memory.add(record)
 
     def append_result(self, state: ExecutionState, result: dict):
         state.history.append(result)
         state.current_step += 1
         self.store.save(state)
+
+    def get_memory(self):
+        return self.memory

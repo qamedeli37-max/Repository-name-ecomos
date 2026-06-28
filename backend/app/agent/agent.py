@@ -15,10 +15,11 @@ class Agent:
     def run(self, user_input: str):
         goal = self._parse_goal(user_input)
         state = self.state_manager.create(goal=goal.get("goal", ""), plan=[])
+        memory = self.state_manager.get_memory()
 
         replan_count = 0
         while state.status != "done" and replan_count < MAX_REPLANS:
-            plan_data = self.planner.plan(goal, self.tools)
+            plan_data = self.planner.plan(goal, self.tools, memory)
             state.plan = plan_data.get("plan", [])
             self.state_manager.save(state)
 
@@ -29,20 +30,22 @@ class Agent:
 
             if exec_result.requires_replan and replan_count < MAX_REPLANS - 1:
                 replan_count += 1
-                refined = self.planner.refine_plan(goal, self.tools, exec_result.feedback)
+                refined = self.planner.refine_plan(goal, self.tools, exec_result.feedback, memory)
                 state.plan = refined.get("plan", [])
                 self.state_manager.save(state)
             else:
                 break
 
-        self.state_manager.mark_done(state)
+        success = not any(s.get("status") == "failed" for s in state.history)
+        self.state_manager.mark_done(state, success)
 
         return {
             "execution_id": state.execution_id,
             "goal": state.goal,
             "status": state.status,
             "steps": state.history,
-            "replans": replan_count
+            "replans": replan_count,
+            "memory_summary": memory.summary()
         }
 
     def resume(self, execution_id: str):
