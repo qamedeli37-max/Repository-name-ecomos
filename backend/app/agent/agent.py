@@ -1,6 +1,7 @@
 import json
 import os
 import re
+from uuid import uuid4
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -20,27 +21,46 @@ class Agent:
             self.client = None
 
     def run(self, user_input: str):
+        execution_id = str(uuid4())
         if self.client:
-            return self._run_llm(user_input)
-        return self._run_rules(user_input)
+            plan = self._llm_decide(user_input)
+        else:
+            plan = {"steps": self._rule_plan(user_input)}
+        return self._execute(execution_id, plan)
 
-    # ========== LLM Mode (multi-step) ==========
-
-    def _run_llm(self, user_input: str):
-        plan = self._llm_decide(user_input)
+    def _execute(self, execution_id: str, plan: dict):
         results = []
         for step in plan.get("steps", []):
             tool = self.tools.get(step.get("tool"))
             if not tool:
-                results.append({"error": f"no tool: {step.get('tool')}"})
+                results.append({
+                    "tool": step.get("tool"),
+                    "status": "failed",
+                    "error": f"tool not found: {step.get('tool')}"
+                })
                 continue
-            result = tool.execute(step.get("args", {}))
-            results.append(result)
-        return results
+            try:
+                result = tool.execute(step.get("args", {}))
+                results.append({
+                    "tool": step.get("tool"),
+                    "status": "success",
+                    "result": result
+                })
+            except Exception as e:
+                results.append({
+                    "tool": step.get("tool"),
+                    "status": "failed",
+                    "error": str(e)
+                })
+        return {
+            "execution_id": execution_id,
+            "steps": results
+        }
+
+    # ========== LLM Mode ==========
 
     def _llm_decide(self, user_input: str):
         tool_list = "\n".join(self.tools.keys())
-
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
@@ -63,62 +83,31 @@ Available tools:
 
 You may use multiple steps if needed."""
                 },
-                {
-                    "role": "user",
-                    "content": user_input
-                }
+                {"role": "user", "content": user_input}
             ]
         )
-
         content = response.choices[0].message.content
         return json.loads(content)
 
     # ========== Rule Mode (fallback) ==========
 
-    def _run_rules(self, user_input: str):
-        steps = self._rule_plan(user_input)
-        results = []
-        for step in steps:
-            tool = self.tools.get(step.get("tool"))
-            if not tool:
-                results.append({"error": f"no tool: {step.get('tool')}"})
-                continue
-            result = tool.execute(step.get("args", {}))
-            results.append(result)
-        return results
-
     def _rule_plan(self, text: str):
         text_lower = text.lower()
         steps = []
 
-        # create
         if "create" in text_lower or "创建" in text_lower:
-            steps.append({
-                "tool": "product.create",
-                "args": self._parse_product_create(text)
-            })
+            steps.append({"tool": "product.create", "args": self._parse_product_create(text)})
 
-        # update
         if "update" in text_lower or "修改" in text_lower:
-            steps.append({
-                "tool": "product.update",
-                "args": self._parse_product_update(text)
-            })
+            steps.append({"tool": "product.update", "args": self._parse_product_update(text)})
 
-        # list
         if "list" in text_lower or "show all" in text_lower or "查看所有" in text_lower:
-            steps.append({
-                "tool": "product.list",
-                "args": {}
-            })
+            steps.append({"tool": "product.list", "args": {}})
         elif "get" in text_lower or "show" in text_lower or "查看" in text_lower:
-            steps.append({
-                "tool": "product.get",
-                "args": {}
-            })
+            steps.append({"tool": "product.get", "args": {}})
 
         if not steps:
-            steps.append({"tool": "product.get", "args": {}})
+            steps.append({"tool": "product.list", "args": {}})
 
         return steps
 
