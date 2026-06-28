@@ -6,18 +6,22 @@ load_dotenv()
 
 
 class CriticResult:
-    def __init__(self, selected_plan: str, score_map: dict, plan_details: dict, suggestions: list[str] = None):
+    def __init__(self, selected_plan: str, score_map: dict, plan_details: dict, suggestions: list[str] = None, suggested_strategy: str = None):
         self.selected_plan = selected_plan
         self.score_map = score_map
         self.plan_details = plan_details
         self.suggestions = suggestions or []
+        self.suggested_strategy = suggested_strategy
 
     def to_dict(self):
-        return {
+        result = {
             "selected_plan": self.selected_plan,
             "score_map": self.score_map,
             "suggestions": self.suggestions
         }
+        if self.suggested_strategy:
+            result["suggested_strategy"] = self.suggested_strategy
+        return result
 
 
 class CriticAgent:
@@ -32,14 +36,15 @@ class CriticAgent:
         else:
             self.client = None
 
-    def evaluate(self, goal: dict, plans: list[dict], memory=None) -> CriticResult:
+    def evaluate(self, goal: dict, plans: list[dict], memory=None, current_strategy=None) -> CriticResult:
         if self.client:
-            return self._llm_evaluate(goal, plans, memory)
-        return self._rule_evaluate(goal, plans, memory)
+            return self._llm_evaluate(goal, plans, memory, current_strategy)
+        return self._rule_evaluate(goal, plans, memory, current_strategy)
 
-    def _llm_evaluate(self, goal: dict, plans: list[dict], memory=None):
+    def _llm_evaluate(self, goal: dict, plans: list[dict], memory=None, current_strategy=None):
         memory_context = self._build_memory_context(goal, memory)
         plans_json = json.dumps(plans, indent=2)
+        strategy_context = f"Current strategy: {current_strategy.name if current_strategy else 'default'}"
 
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",
@@ -48,13 +53,14 @@ class CriticAgent:
                     "role": "system",
                     "content": f"""You are a plan critic and strategy optimizer.
 
-Evaluate plans AND suggest structural improvements.
+Evaluate plans AND suggest structural improvements AND strategy switching.
 
 Return ONLY valid JSON:
 {{
     "selected_plan": "plan_id",
     "score_map": {{"a": 0.6, "b": 0.9}},
     "suggestions": ["suggestion1", "suggestion2"],
+    "suggested_strategy": "strategy_id_or_null",
     "reasoning": "why selected"
 }}
 
@@ -62,7 +68,12 @@ Rules:
 - Choose the plan most likely to succeed
 - Detect weak patterns in all plans
 - Suggest structural improvements
+- If repeated failures detected, suggest strategy switch:
+  - "safe_mode" for frequent failures
+  - "fast_execution" for simple tasks
+  - "batch_operation" for multiple similar operations
 
+{strategy_context}
 {memory_context}"""
                 },
                 {
@@ -77,18 +88,21 @@ Rules:
         selected_id = data.get("selected_plan", plans[0].get("id", "a"))
         score_map = data.get("score_map", {})
         suggestions = data.get("suggestions", [])
+        suggested_strategy = data.get("suggested_strategy")
         plan_details = {p["id"]: p for p in plans}
 
         return CriticResult(
             selected_plan=selected_id,
             score_map=score_map,
             plan_details=plan_details,
-            suggestions=suggestions
+            suggestions=suggestions,
+            suggested_strategy=suggested_strategy
         )
 
-    def _rule_evaluate(self, goal: dict, plans: list[dict], memory=None):
+    def _rule_evaluate(self, goal: dict, plans: list[dict], memory=None, current_strategy=None):
         score_map = {}
         suggestions = []
+        suggested_strategy = None
         goal_text = goal.get("goal", "").lower()
 
         high_score_plans = memory.get_high_score_plans() if memory else []
@@ -103,6 +117,10 @@ Rules:
             if pattern["count"] >= 2:
                 avoid_steps.add(pattern["step"])
 
+        if len(failure_patterns) >= 3:
+            suggested_strategy = "safe_mode"
+            suggestions.append("multiple failure patterns detected - consider safe_mode strategy")
+
         for plan in plans:
             score = 1.0
             plan_id = plan.get("id", "a")
@@ -111,6 +129,17 @@ Rules:
 
             if not steps:
                 score = 0.0
+
+            if current_strategy:
+                if current_strategy.avoid_tools:
+                    for tool in plan_tools:
+                        if tool in current_strategy.avoid_tools:
+                            score -= 0.3
+                            suggestions.append(f"strategy avoids '{tool}' but plan uses it")
+
+                if len(steps) > current_strategy.max_steps:
+                    score -= 0.1
+                    suggestions.append(f"plan exceeds strategy max_steps ({current_strategy.max_steps})")
 
             if "create" in goal_text or "创建" in goal_text:
                 if "product.create" not in plan_tools:
@@ -123,18 +152,14 @@ Rules:
             for tool in plan_tools:
                 if tool in avoid_steps:
                     score -= 0.3
-                    suggestions.append(f"tool '{tool}' has repeated failures - consider alternatives")
+                    suggestions.append(f"tool '{tool}' has repeated failures")
 
             if high_score_tools and any(t in high_score_tools for t in plan_tools):
                 score += 0.1
 
-            if len(steps) > 4:
-                score -= 0.1
-                suggestions.append("plan has many steps - consider breaking into sub-goals")
-
             if len(set(plan_tools)) < len(plan_tools):
                 score -= 0.1
-                suggestions.append("plan has duplicate tool calls - consider consolidation")
+                suggestions.append("plan has duplicate tool calls")
 
             score_map[plan_id] = min(1.0, max(0.0, score))
 
@@ -148,7 +173,8 @@ Rules:
             selected_plan=selected_id,
             score_map=score_map,
             plan_details=plan_details,
-            suggestions=suggestions
+            suggestions=suggestions,
+            suggested_strategy=suggested_strategy
         )
 
     def _build_memory_context(self, goal: dict, memory) -> str:

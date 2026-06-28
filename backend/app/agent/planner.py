@@ -7,8 +7,9 @@ load_dotenv()
 
 
 class PlannerAgent:
-    def __init__(self):
+    def __init__(self, strategy_registry=None):
         self._init_llm()
+        self.strategy_registry = strategy_registry
 
     def _init_llm(self):
         api_key = os.getenv("OPENAI_API_KEY")
@@ -18,19 +19,20 @@ class PlannerAgent:
         else:
             self.client = None
 
-    def plan(self, goal: dict, tools: dict, memory=None) -> dict:
+    def plan(self, goal: dict, tools: dict, memory=None, strategy=None) -> dict:
         if self.client:
-            return self._llm_plan(goal, tools, memory)
-        return {"plans": [{"id": "a", "steps": self._rule_plan(goal, memory)}]}
+            return self._llm_plan(goal, tools, memory, strategy)
+        return {"plans": [{"id": "a", "steps": self._rule_plan(goal, memory, strategy)}]}
 
-    def refine_plan(self, goal: dict, tools: dict, feedback: dict, memory=None) -> dict:
+    def refine_plan(self, goal: dict, tools: dict, feedback: dict, memory=None, strategy=None) -> dict:
         if self.client:
-            return self._llm_refine(goal, tools, feedback, memory)
-        return {"plans": [{"id": "a", "steps": self._rule_refine(goal, feedback, memory)}]}
+            return self._llm_refine(goal, tools, feedback, memory, strategy)
+        return {"plans": [{"id": "a", "steps": self._rule_refine(goal, feedback, memory, strategy)}]}
 
-    def _llm_plan(self, goal: dict, tools: dict, memory=None):
+    def _llm_plan(self, goal: dict, tools: dict, memory=None, strategy=None):
         tool_list = "\n".join(tools.keys())
         memory_context = self._build_memory_context(goal, memory)
+        strategy_context = self._build_strategy_context(strategy)
 
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",
@@ -39,6 +41,7 @@ class PlannerAgent:
                     "role": "system",
                     "content": f"""You are a task planner. Generate 2-3 different plans.
 
+Follow the active strategy constraints.
 CRITICAL: Avoid all known failure patterns listed in context.
 Use high-score patterns as inspiration.
 
@@ -55,7 +58,8 @@ Return ONLY valid JSON:
 Available tools:
 {tool_list}
 
-{memory_context}"""
+{memory_context}
+{strategy_context}"""
                 },
                 {"role": "user", "content": json.dumps(goal)}
             ]
@@ -63,9 +67,10 @@ Available tools:
         content = response.choices[0].message.content
         return json.loads(content)
 
-    def _llm_refine(self, goal: dict, tools: dict, feedback: dict, memory=None):
+    def _llm_refine(self, goal: dict, tools: dict, feedback: dict, memory=None, strategy=None):
         tool_list = "\n".join(tools.keys())
         memory_context = self._build_memory_context(goal, memory)
+        strategy_context = self._build_strategy_context(strategy)
 
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",
@@ -74,6 +79,7 @@ Available tools:
                     "role": "system",
                     "content": f"""You are a task planner. A previous plan failed.
 
+Follow the active strategy constraints.
 CRITICAL: Avoid all known failure patterns listed in context.
 Generate 2-3 NEW plans that avoid the error.
 Use high-score patterns as inspiration.
@@ -91,7 +97,8 @@ Return ONLY valid JSON:
 Available tools:
 {tool_list}
 
-{memory_context}"""
+{memory_context}
+{strategy_context}"""
                 },
                 {
                     "role": "user",
@@ -128,10 +135,26 @@ Available tools:
 
         return "\n".join(parts) if parts else ""
 
-    def _rule_plan(self, goal: dict, memory=None):
+    def _build_strategy_context(self, strategy) -> str:
+        if not strategy:
+            return ""
+        parts = [f"Active strategy: {strategy.name}"]
+        if strategy.tool_priority:
+            parts.append(f"Prioritize tools: {', '.join(strategy.tool_priority)}")
+        if strategy.avoid_tools:
+            parts.append(f"Avoid tools: {', '.join(strategy.avoid_tools)}")
+        parts.append(f"Max steps: {strategy.max_steps}")
+        return "\n".join(parts)
+
+    def _rule_plan(self, goal: dict, memory=None, strategy=None):
         text = goal.get("goal", "").lower()
         steps = []
         avoid_tools = set()
+        priority_tools = []
+
+        if strategy:
+            avoid_tools = set(strategy.avoid_tools)
+            priority_tools = strategy.tool_priority
 
         if memory:
             failure_patterns = memory.get_failure_patterns()
@@ -150,21 +173,30 @@ Available tools:
             if "product.create" not in avoid_tools:
                 steps.append({"tool": "product.create", "args": self._parse_product_create(text)})
         if "update" in text or "修改" in text:
-            steps.append({"tool": "product.update", "args": self._parse_product_update(text)})
+            if "product.update" not in avoid_tools:
+                steps.append({"tool": "product.update", "args": self._parse_product_update(text)})
         if "list" in text or "show all" in text or "查看所有" in text:
-            steps.append({"tool": "product.list", "args": {}})
+            if "product.list" not in avoid_tools:
+                steps.append({"tool": "product.list", "args": {}})
         elif "get" in text or "show" in text or "查看" in text:
-            steps.append({"tool": "product.get", "args": {}})
+            if "product.get" not in avoid_tools:
+                steps.append({"tool": "product.get", "args": {}})
+
         if not steps:
-            steps.append({"tool": "product.list", "args": {}})
+            if "product.list" not in avoid_tools:
+                steps.append({"tool": "product.list", "args": {}})
+
+        if priority_tools and not steps:
+            steps.append({"tool": priority_tools[0], "args": {}})
+
         return steps
 
-    def _rule_refine(self, goal: dict, feedback: dict, memory=None):
+    def _rule_refine(self, goal: dict, feedback: dict, memory=None, strategy=None):
         failed_step = feedback.get("failed_step", {})
         tool_name = failed_step.get("tool", "")
         if tool_name == "product.create":
             return [{"tool": "product.list", "args": {}}]
-        return self._rule_plan(goal, memory)
+        return self._rule_plan(goal, memory, strategy)
 
     def _parse_product_create(self, text: str):
         price_match = re.search(r'(\d+(?:\.\d+)?)', text)

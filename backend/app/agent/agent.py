@@ -2,6 +2,7 @@ from app.agent.planner import PlannerAgent
 from app.agent.critic import CriticAgent
 from app.agent.executor import ExecutorAgent
 from app.agent.state_manager import StateManager
+from app.agent.strategy import StrategyRegistry
 
 MAX_REPLANS = 3
 MIN_SCORE = 0.7
@@ -10,7 +11,8 @@ MIN_SCORE = 0.7
 class Agent:
     def __init__(self, tools: dict):
         self.tools = tools
-        self.planner = PlannerAgent()
+        self.strategy_registry = StrategyRegistry()
+        self.planner = PlannerAgent(strategy_registry=self.strategy_registry)
         self.critic = CriticAgent()
         self.executor = ExecutorAgent(tools)
         self.state_manager = StateManager()
@@ -20,16 +22,27 @@ class Agent:
         goal_type = self._detect_goal_type(goal.get("goal", ""))
         state = self.state_manager.create(goal=goal.get("goal", ""), plan=[])
         memory = self.state_manager.get_memory()
+        strategy = self.strategy_registry.get_current()
 
         replan_count = 0
         last_critic_result = None
 
         while state.status != "done" and replan_count < MAX_REPLANS:
-            plan_data = self.planner.plan(goal, self.tools, memory)
+            plan_data = self.planner.plan(goal, self.tools, memory, strategy)
             plans = plan_data.get("plans", [])
 
-            critic_result = self.critic.evaluate(goal, plans, memory)
+            critic_result = self.critic.evaluate(goal, plans, memory, strategy)
             last_critic_result = critic_result
+
+            if critic_result.suggested_strategy:
+                old_id = self.strategy_registry.current_strategy_id
+                new_strategy = self.strategy_registry.switch_to(critic_result.suggested_strategy)
+                if old_id != new_strategy.id:
+                    strategy = new_strategy
+                    plan_data = self.planner.plan(goal, self.tools, memory, strategy)
+                    plans = plan_data.get("plans", [])
+                    critic_result = self.critic.evaluate(goal, plans, memory, strategy)
+                    last_critic_result = critic_result
 
             selected_id = critic_result.selected_plan
             selected_plan = critic_result.plan_details.get(selected_id, plans[0])
@@ -45,12 +58,12 @@ class Agent:
                         step=step_result.get("tool", "unknown"),
                         error=step_result.get("error", "unknown"),
                         goal_type=goal_type,
-                        context={"execution_id": state.execution_id}
+                        context={"execution_id": state.execution_id, "strategy": strategy.id}
                     )
 
             if exec_result.requires_replan and replan_count < MAX_REPLANS - 1:
                 replan_count += 1
-                refined = self.planner.refine_plan(goal, self.tools, exec_result.feedback, memory)
+                refined = self.planner.refine_plan(goal, self.tools, exec_result.feedback, memory, strategy)
                 state.plan = []
                 self.state_manager.save(state)
             else:
@@ -74,6 +87,7 @@ class Agent:
             "status": state.status,
             "steps": state.history,
             "replans": replan_count,
+            "strategy": strategy.id,
             "memory_summary": memory.summary()
         }
 
