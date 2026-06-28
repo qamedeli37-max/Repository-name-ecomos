@@ -19,20 +19,21 @@ class PlannerAgent:
         else:
             self.client = None
 
-    def plan(self, goal: dict, tools: dict, memory=None, strategy=None) -> dict:
+    def plan(self, goal: dict, tools: dict, memory=None, strategy=None, meta_state=None) -> dict:
         if self.client:
-            return self._llm_plan(goal, tools, memory, strategy)
-        return {"plans": [{"id": "a", "steps": self._rule_plan(goal, memory, strategy)}]}
+            return self._llm_plan(goal, tools, memory, strategy, meta_state)
+        return {"plans": [{"id": "a", "steps": self._rule_plan(goal, memory, strategy, meta_state)}]}
 
-    def refine_plan(self, goal: dict, tools: dict, feedback: dict, memory=None, strategy=None) -> dict:
+    def refine_plan(self, goal: dict, tools: dict, feedback: dict, memory=None, strategy=None, meta_state=None) -> dict:
         if self.client:
-            return self._llm_refine(goal, tools, feedback, memory, strategy)
-        return {"plans": [{"id": "a", "steps": self._rule_refine(goal, feedback, memory, strategy)}]}
+            return self._llm_refine(goal, tools, feedback, memory, strategy, meta_state)
+        return {"plans": [{"id": "a", "steps": self._rule_refine(goal, feedback, memory, strategy, meta_state)}]}
 
-    def _llm_plan(self, goal: dict, tools: dict, memory=None, strategy=None):
+    def _llm_plan(self, goal: dict, tools: dict, memory=None, strategy=None, meta_state=None):
         tool_list = "\n".join(tools.keys())
         memory_context = self._build_memory_context(goal, memory)
         strategy_context = self._build_strategy_context(strategy)
+        meta_context = self._build_meta_context(meta_state)
 
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",
@@ -41,8 +42,9 @@ class PlannerAgent:
                     "role": "system",
                     "content": f"""You are a task planner. Generate 2-3 different plans.
 
+Use meta-state insights to improve planning.
 Follow the active strategy constraints.
-CRITICAL: Avoid all known failure patterns listed in context.
+CRITICAL: Avoid all known failure patterns.
 Use high-score patterns as inspiration.
 
 Return ONLY valid JSON:
@@ -59,7 +61,8 @@ Available tools:
 {tool_list}
 
 {memory_context}
-{strategy_context}"""
+{strategy_context}
+{meta_context}"""
                 },
                 {"role": "user", "content": json.dumps(goal)}
             ]
@@ -67,10 +70,11 @@ Available tools:
         content = response.choices[0].message.content
         return json.loads(content)
 
-    def _llm_refine(self, goal: dict, tools: dict, feedback: dict, memory=None, strategy=None):
+    def _llm_refine(self, goal: dict, tools: dict, feedback: dict, memory=None, strategy=None, meta_state=None):
         tool_list = "\n".join(tools.keys())
         memory_context = self._build_memory_context(goal, memory)
         strategy_context = self._build_strategy_context(strategy)
+        meta_context = self._build_meta_context(meta_state)
 
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",
@@ -79,10 +83,10 @@ Available tools:
                     "role": "system",
                     "content": f"""You are a task planner. A previous plan failed.
 
+Use meta-state insights to improve planning.
 Follow the active strategy constraints.
-CRITICAL: Avoid all known failure patterns listed in context.
+CRITICAL: Avoid all known failure patterns.
 Generate 2-3 NEW plans that avoid the error.
-Use high-score patterns as inspiration.
 
 Return ONLY valid JSON:
 {{
@@ -98,7 +102,8 @@ Available tools:
 {tool_list}
 
 {memory_context}
-{strategy_context}"""
+{strategy_context}
+{meta_context}"""
                 },
                 {
                     "role": "user",
@@ -146,7 +151,26 @@ Available tools:
         parts.append(f"Max steps: {strategy.max_steps}")
         return "\n".join(parts)
 
-    def _rule_plan(self, goal: dict, memory=None, strategy=None):
+    def _build_meta_context(self, meta_state) -> str:
+        if not meta_state:
+            return ""
+        parts = []
+
+        perf = meta_state.performance
+        parts.append(f"System performance: success_rate={perf.success_rate:.2f}, avg_steps={perf.avg_steps:.1f}")
+
+        if perf.avg_replans > 1:
+            parts.append("High replan rate detected - generate more robust plans")
+
+        if perf.avg_score < 0.7:
+            parts.append("Low average score - focus on high-quality plans")
+
+        if len(meta_state.strategy_history) > 1:
+            parts.append(f"Strategy evolution: {' -> '.join(meta_state.strategy_history)}")
+
+        return "\n".join(parts) if parts else ""
+
+    def _rule_plan(self, goal: dict, memory=None, strategy=None, meta_state=None):
         text = goal.get("goal", "").lower()
         steps = []
         avoid_tools = set()
@@ -155,6 +179,10 @@ Available tools:
         if strategy:
             avoid_tools = set(strategy.avoid_tools)
             priority_tools = strategy.tool_priority
+
+        if meta_state and meta_state.performance.avg_replans > 1.5:
+            if "product.create" not in avoid_tools:
+                steps.append({"tool": "product.list", "args": {}})
 
         if memory:
             failure_patterns = memory.get_failure_patterns()
@@ -191,12 +219,12 @@ Available tools:
 
         return steps
 
-    def _rule_refine(self, goal: dict, feedback: dict, memory=None, strategy=None):
+    def _rule_refine(self, goal: dict, feedback: dict, memory=None, strategy=None, meta_state=None):
         failed_step = feedback.get("failed_step", {})
         tool_name = failed_step.get("tool", "")
         if tool_name == "product.create":
             return [{"tool": "product.list", "args": {}}]
-        return self._rule_plan(goal, memory, strategy)
+        return self._rule_plan(goal, memory, strategy, meta_state)
 
     def _parse_product_create(self, text: str):
         price_match = re.search(r'(\d+(?:\.\d+)?)', text)
