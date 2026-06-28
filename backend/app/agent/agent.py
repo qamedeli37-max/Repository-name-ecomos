@@ -9,7 +9,7 @@ class Agent:
         intent = self._decide_intent(user_input)
         tool = self.tools.get(intent)
         if not tool:
-            return {"error": f"no tool for intent: {intent}"}
+            return {"error": f"no tool: {intent}"}
         data = self._extract_data(intent, user_input)
         return tool.execute(data)
 
@@ -19,7 +19,7 @@ class Agent:
             return "product.create"
         if "update" in text:
             return "product.update"
-        if "get" in text or "show" in text:
+        if "get" in text or "show" in text or "list" in text or "查看" in text:
             return "product.get"
         return "product.get"
 
@@ -36,8 +36,8 @@ class Agent:
         price_match = re.search(r'(\d+(?:\.\d+)?)', text)
         price = float(price_match.group(1)) if price_match else 0
 
-        # 去掉价格和关键词，剩下的当 title
         cleaned = re.sub(r'create\s+(a\s+)?product\s*', '', text, flags=re.IGNORECASE)
+        cleaned = re.sub(r'帮我创建', '', cleaned)
         cleaned = re.sub(r'\d+(?:\.\d+)?', '', cleaned).strip()
         title = cleaned if cleaned else "Untitled"
 
