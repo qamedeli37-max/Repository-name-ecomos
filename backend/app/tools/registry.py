@@ -1,5 +1,5 @@
 from app.tools.base import Tool
-from app.tools.product import ProductCreateTool, ProductUpdateTool, ProductGetTool
+from app.tools.product import ProductCreateTool, ProductUpdateTool, ProductGetTool, ProductListTool
 from app.services.product_service import ProductService
 
 
@@ -8,6 +8,7 @@ def build_tools(product_service: ProductService) -> dict[str, Tool]:
         ProductCreateTool(product_service),
         ProductUpdateTool(product_service),
         ProductGetTool(product_service),
+        ProductListTool(product_service),
     ]
     return {tool.name: tool for tool in tools}
 

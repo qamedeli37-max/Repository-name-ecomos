@@ -30,3 +30,13 @@ class ProductGetTool(Tool):
 
     def execute(self, data: dict):
         return self.product_service.get(data)
+
+
+class ProductListTool(Tool):
+    name = "product.list"
+
+    def __init__(self, product_service: ProductService):
+        self.product_service = product_service
+
+    def execute(self, data: dict):
+        return self.product_service.list()

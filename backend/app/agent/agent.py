@@ -24,16 +24,19 @@ class Agent:
             return self._run_llm(user_input)
         return self._run_rules(user_input)
 
-    # ========== LLM Mode ==========
+    # ========== LLM Mode (multi-step) ==========
 
     def _run_llm(self, user_input: str):
-        result = self._llm_decide(user_input)
-        tool_name = result.get("tool")
-        args = result.get("args", {})
-        tool = self.tools.get(tool_name)
-        if not tool:
-            return {"error": f"no tool: {tool_name}"}
-        return tool.execute(args)
+        plan = self._llm_decide(user_input)
+        results = []
+        for step in plan.get("steps", []):
+            tool = self.tools.get(step.get("tool"))
+            if not tool:
+                results.append({"error": f"no tool: {step.get('tool')}"})
+                continue
+            result = tool.execute(step.get("args", {}))
+            results.append(result)
+        return results
 
     def _llm_decide(self, user_input: str):
         tool_list = "\n".join(self.tools.keys())
@@ -47,12 +50,18 @@ class Agent:
 
 Return ONLY valid JSON:
 {{
-    "tool": "tool.name",
-    "args": {{}}
+    "steps": [
+        {{
+            "tool": "tool.name",
+            "args": {{}}
+        }}
+    ]
 }}
 
 Available tools:
-{tool_list}"""
+{tool_list}
+
+You may use multiple steps if needed."""
                 },
                 {
                     "role": "user",
@@ -67,31 +76,51 @@ Available tools:
     # ========== Rule Mode (fallback) ==========
 
     def _run_rules(self, user_input: str):
-        intent = self._decide_intent(user_input)
-        tool = self.tools.get(intent)
-        if not tool:
-            return {"error": f"no tool: {intent}"}
-        data = self._extract_data(intent, user_input)
-        return tool.execute(data)
+        steps = self._rule_plan(user_input)
+        results = []
+        for step in steps:
+            tool = self.tools.get(step.get("tool"))
+            if not tool:
+                results.append({"error": f"no tool: {step.get('tool')}"})
+                continue
+            result = tool.execute(step.get("args", {}))
+            results.append(result)
+        return results
 
-    def _decide_intent(self, text: str):
-        text = text.lower()
-        if "create" in text or "创建" in text:
-            return "product.create"
-        if "update" in text or "修改" in text:
-            return "product.update"
-        if "get" in text or "show" in text or "list" in text or "查看" in text:
-            return "product.get"
-        return "product.get"
+    def _rule_plan(self, text: str):
+        text_lower = text.lower()
+        steps = []
 
-    def _extract_data(self, intent: str, text: str):
-        if intent == "product.create":
-            return self._parse_product_create(text)
-        if intent == "product.update":
-            return self._parse_product_update(text)
-        if intent == "product.get":
-            return {}
-        return {}
+        # create
+        if "create" in text_lower or "创建" in text_lower:
+            steps.append({
+                "tool": "product.create",
+                "args": self._parse_product_create(text)
+            })
+
+        # update
+        if "update" in text_lower or "修改" in text_lower:
+            steps.append({
+                "tool": "product.update",
+                "args": self._parse_product_update(text)
+            })
+
+        # list
+        if "list" in text_lower or "show all" in text_lower or "查看所有" in text_lower:
+            steps.append({
+                "tool": "product.list",
+                "args": {}
+            })
+        elif "get" in text_lower or "show" in text_lower or "查看" in text_lower:
+            steps.append({
+                "tool": "product.get",
+                "args": {}
+            })
+
+        if not steps:
+            steps.append({"tool": "product.get", "args": {}})
+
+        return steps
 
     def _parse_product_create(self, text: str):
         price_match = re.search(r'(\d+(?:\.\d+)?)', text)
