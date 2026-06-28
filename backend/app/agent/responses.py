@@ -26,6 +26,7 @@ class AgentResponse(BaseModel):
     strategy: str = "default"
     profile: str = "balanced"
     cognition: str = "medium"
+    guard: Optional[dict] = None
     error: Optional[ErrorDetail] = None
     tenant_id: Optional[str] = None
     timeline: Optional[dict] = None
@@ -93,6 +94,7 @@ def format_agent_response(raw: dict) -> AgentResponse:
         strategy=raw.get("strategy", "default"),
         profile=raw.get("profile", "balanced"),
         cognition=raw.get("cognition", "medium"),
+        guard=raw.get("guard"),
         error=error,
         tenant_id=raw.get("tenant_id"),
         timeline=raw.get("timeline"),

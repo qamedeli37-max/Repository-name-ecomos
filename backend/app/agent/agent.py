@@ -3,13 +3,14 @@ from app.agent.critic import CriticAgent
 from app.agent.executor import ExecutorAgent
 from app.agent.state_manager import StateManager
 from app.agent.strategy import StrategyRegistry
-from app.agent.meta import MetaStateManager
 from app.agent.profile import ProfileManager
 from app.agent.cognition import get_cognition_config
 from app.agent.timeline import ExecutionTimeline
+from app.agent.context_builder import ContextBuilder
+from app.agent.guard import ExecutionGuard
+from app.agent.stabilizer import CriticStabilizer
+from app.agent.failure_policy import FailurePolicy, FailureAction
 from app.services.execution_service import ExecutionService
-
-MAX_REPLANS = 3
 
 
 class Agent:
@@ -22,6 +23,10 @@ class Agent:
         self.executor = ExecutorAgent(tools)
         self.state_manager = StateManager()
         self.execution_service = ExecutionService()
+        self.context_builder = ContextBuilder()
+        self.guard = ExecutionGuard()
+        self.stabilizer = CriticStabilizer()
+        self.failure_policy = FailurePolicy()
 
     def run(self, user_input: str, tenant_id: str = None, debug: bool = False):
         timeline = ExecutionTimeline()
@@ -29,7 +34,6 @@ class Agent:
         debug_data = {} if debug else None
 
         goal = self._parse_goal(user_input)
-        goal_type = self._detect_goal_type(goal.get("goal", ""))
         state = self.state_manager.create(goal=goal.get("goal", ""), plan=[], tenant_id=tenant_id)
         memory = self.state_manager.get_memory(tenant_id)
 
@@ -37,11 +41,13 @@ class Agent:
         strategy = self.strategy_registry.get_current()
         cognition_config = get_cognition_config(profile.id)
 
+        ctx = self.context_builder.build(goal, profile, strategy, cognition_config, memory)
+        self.guard.reset(cognition_config)
+        self.failure_policy.reset()
+
         if debug:
-            debug_data["input"] = {"goal": goal, "tenant_id": tenant_id}
-            debug_data["profile"] = profile.id
-            debug_data["strategy"] = strategy.id
-            debug_data["cognition"] = cognition_config.model_dump()
+            debug_data["context"] = ctx.model_dump()
+            debug_data["guard"] = self.guard.status()
 
         self.execution_service.log_start(
             execution_id=state.execution_id,
@@ -51,18 +57,21 @@ class Agent:
             profile=profile.id,
             cognition=cognition_config.level
         )
-
         timeline.record("init")
 
         replan_count = 0
         last_score = 0
         critic_feedback = None
 
-        while state.status != "done" and replan_count < MAX_REPLANS:
+        while state.status != "done" and replan_count < (cognition_config.max_steps if cognition_config.allow_replan else 0):
+            if not self.guard.can_step():
+                if debug:
+                    debug_data["guard_stop"] = "max_steps exceeded"
+                break
+
             plan_data = self.planner.plan(
                 goal, self.tools, memory,
-                strategy=strategy,
-                profile=profile,
+                strategy=strategy, profile=profile,
                 cognition_config=cognition_config,
                 critic_feedback=critic_feedback
             )
@@ -76,25 +85,30 @@ class Agent:
             state.plan = selected_plan.get("steps", [])
             self.state_manager.save(state, tenant_id)
 
-            critic_result = self.critic.evaluate(goal, state.plan, memory, cognition_config)
+            raw_critic = self.critic.evaluate(goal, state.plan, memory, cognition_config)
+            stabilized = self.stabilizer.stabilize(
+                raw_critic.score, raw_critic.suggestions,
+                state.plan, cognition_config
+            )
             timeline.record("critic")
-            last_score = critic_result.score
+            last_score = stabilized.score
 
             if debug:
-                debug_data["critic"] = critic_result.to_dict()
+                debug_data["critic"] = stabilized.model_dump()
 
-            if not critic_result.approved and replan_count < MAX_REPLANS - 1:
+            if not stabilized.approved and replan_count < (cognition_config.max_steps if cognition_config.allow_replan else 0) - 1:
                 replan_count += 1
+                high_issues = [i for i in stabilized.issues if i.severity == "high"]
                 critic_feedback = {
-                    "suggestion": "; ".join(critic_result.suggestions),
-                    "score": critic_result.score
+                    "suggestion": high_issues[0].message if high_issues else "; ".join(stabilized.suggestions),
+                    "score": stabilized.score
                 }
                 state.plan = []
                 self.state_manager.save(state, tenant_id)
                 timeline.record("replan", metadata={"reason": "critic_rejected"})
                 continue
 
-            exec_result = self.executor.execute_plan(state.plan, profile, cognition_config)
+            exec_result = self.executor.execute_plan(state.plan, profile, cognition_config, self.guard)
             timeline.record("execution")
 
             if debug:
@@ -104,16 +118,42 @@ class Agent:
             for step_result in exec_result.steps:
                 self.state_manager.append_result(state, step_result, tenant_id)
                 self.execution_service.log_step(state.execution_id, step_result)
+
                 if step_result.get("status") == "failed":
+                    error_msg = step_result.get("error", "unknown")
+                    error_type = self.failure_policy.classify_error(error_msg)
+                    action = self.failure_policy.decide(
+                        error_type, step_result.get("tool", ""),
+                        self.guard._retry_count, self.guard.max_retry
+                    )
+
+                    if debug:
+                        debug_data.setdefault("failure_actions", []).append({
+                            "tool": step_result.get("tool"),
+                            "error_type": error_type,
+                            "action": action.value
+                        })
+
                     self.state_manager.record_failure(
                         step=step_result.get("tool", "unknown"),
-                        error=step_result.get("error", "unknown"),
-                        goal_type=goal_type,
-                        context={"execution_id": state.execution_id},
+                        error=error_msg,
+                        goal_type=ctx.goal_type,
+                        context={"execution_id": state.execution_id, "action": action.value},
                         tenant_id=tenant_id
                     )
 
-            if exec_result.requires_replan and replan_count < MAX_REPLANS - 1:
+                    if action == FailureAction.STOP:
+                        break
+                    elif action == FailureAction.REPLAN:
+                        if replan_count < (cognition_config.max_steps if cognition_config.allow_replan else 0) - 1:
+                            replan_count += 1
+                            critic_feedback = {"suggestion": error_msg, "score": 0}
+                            state.plan = []
+                            self.state_manager.save(state, tenant_id)
+                            timeline.record("replan", metadata={"reason": "failure_policy"})
+                            break
+
+            if exec_result.requires_replan and replan_count < (cognition_config.max_steps if cognition_config.allow_replan else 0) - 1:
                 replan_count += 1
                 critic_feedback = {
                     "suggestion": "; ".join(exec_result.feedback) if exec_result.feedback else "execution failed",
@@ -133,7 +173,7 @@ class Agent:
             plan_steps=state.plan,
             score=last_score,
             success=success,
-            goal_type=goal_type,
+            goal_type=ctx.goal_type,
             tenant_id=tenant_id
         )
 
@@ -151,7 +191,6 @@ class Agent:
             score=last_score,
             replans=replan_count
         )
-
         timeline.record("complete")
 
         response = {
@@ -164,6 +203,7 @@ class Agent:
             "strategy": strategy.id,
             "profile": profile.id,
             "cognition": cognition_config.level,
+            "guard": self.guard.status(),
             "timeline": timeline.get_summary(),
             "tenant_id": tenant_id
         }
@@ -196,7 +236,6 @@ class Agent:
             status="success",
             result=str(state.history[-1].get("result")) if state.history else None
         )
-
         return {
             "execution_id": state.execution_id,
             "goal": state.goal,
@@ -211,18 +250,4 @@ class Agent:
                 "constraints": user_input.get("constraints", []),
                 "context": user_input.get("context", {})
             }
-        return {
-            "goal": user_input,
-            "constraints": [],
-            "context": {}
-        }
-
-    def _detect_goal_type(self, goal: str) -> str:
-        goal_lower = goal.lower()
-        if "create" in goal_lower or "创建" in goal_lower:
-            return "product_create"
-        if "update" in goal_lower or "修改" in goal_lower:
-            return "product_update"
-        if "list" in goal_lower or "show" in goal_lower or "查看" in goal_lower:
-            return "product_list"
-        return "unknown"
+        return {"goal": user_input, "constraints": [], "context": {}}
