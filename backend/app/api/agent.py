@@ -1,41 +1,56 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from app.tools.registry import build_tools
 from app.services.product_service import ProductService
 from app.repositories.product_repository import ProductRepository
-from app.tools.registry import build_tools
-from app.agent.agent import Agent
 from app.db.database import SessionLocal
+from app.agent.agent import Agent
+from app.agent.responses import format_agent_response, error_response
 
-router = APIRouter(tags=["Agent"])
+router = APIRouter()
 
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+_agent = None
 
 
-def get_service(db: Session = Depends(get_db)):
-    repo = ProductRepository(db)
-    return ProductService(repo)
+def get_agent():
+    global _agent
+    if _agent is None:
+        session = SessionLocal()
+        repo = ProductRepository(session)
+        service = ProductService(repo)
+        tools = build_tools(service)
+        _agent = Agent(tools)
+    return _agent
 
 
-def get_agent(service: ProductService = Depends(get_service)):
-    tools = build_tools(service)
-    return Agent(tools)
+class AgentRequest(BaseModel):
+    input: str = None
+    goal: str = None
+    constraints: list = []
+    context: dict = {}
 
 
 @router.post("/agent")
-def run_agent(body: dict, agent: Agent = Depends(get_agent)):
-    user_input = body.get("input") or body.get("goal") or body
-    return agent.run(user_input)
+def run_agent(req: AgentRequest):
+    try:
+        agent = get_agent()
+        user_input = req.goal or req.input or ""
+        if not user_input:
+            return error_response("validation_error", "input or goal is required")
+
+        raw = agent.run(user_input)
+        return format_agent_response(raw)
+    except Exception as e:
+        return error_response("internal_error", str(e))
 
 
 @router.post("/resume")
-def resume_agent(body: dict, agent: Agent = Depends(get_agent)):
-    execution_id = body.get("execution_id")
-    if not execution_id:
-        return {"error": "missing execution_id"}
-    return agent.resume(execution_id)
+def resume_agent(execution_id: str):
+    try:
+        agent = get_agent()
+        raw = agent.resume(execution_id)
+        if "error" in raw:
+            return error_response("not_found", raw["error"])
+        return format_agent_response(raw)
+    except Exception as e:
+        return error_response("internal_error", str(e))
