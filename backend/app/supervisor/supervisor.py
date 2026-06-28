@@ -1,9 +1,12 @@
+from app.tools.registry import ToolRegistry
+
+
 class Supervisor:
-    def __init__(self, handlers: dict):
-        self.handlers = handlers
+    def __init__(self, registry: ToolRegistry):
+        self.registry = registry
 
     def execute_task(self, task):
-        handler = self.handlers.get(task.intent)
-        if not handler:
-            return {"error": "unknown intent"}
-        return handler.handle(task.data)
+        tool = self.registry.get(task.intent)
+        if not tool:
+            return {"error": f"unknown intent: {task.intent}"}
+        return tool.execute(task.data)

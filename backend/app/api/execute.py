@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 from app.db.database import SessionLocal
 from app.repositories.product_repository import ProductRepository
 from app.services.product_service import ProductService
-from app.handlers.product import ProductCreateHandler, ProductUpdateHandler, ProductGetHandler
+from app.tools.product import ProductCreateTool, ProductUpdateTool, ProductGetTool
+from app.tools.registry import ToolRegistry
 from app.supervisor.supervisor import Supervisor
 from app.supervisor.task import Task
 
@@ -22,13 +23,12 @@ def get_supervisor(db: Session = Depends(get_db)):
     repo = ProductRepository(db)
     service = ProductService(repo)
 
-    handlers = {
-        "product.create": ProductCreateHandler(service),
-        "product.update": ProductUpdateHandler(service),
-        "product.get": ProductGetHandler(service),
-    }
+    registry = ToolRegistry()
+    registry.register(ProductCreateTool(service))
+    registry.register(ProductUpdateTool(service))
+    registry.register(ProductGetTool(service))
 
-    return Supervisor(handlers)
+    return Supervisor(registry)
 
 
 @router.post("/execute")
