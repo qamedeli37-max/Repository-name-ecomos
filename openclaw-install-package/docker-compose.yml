@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+  openclaw-python:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: python
+    container_name: openclaw-python
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./core:/app/core
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - openclaw-net
+
+  openclaw-node:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: node
+    container_name: openclaw-node
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      - ./core:/app/core
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - openclaw-net
+
+networks:
+  openclaw-net:
+    driver: bridge

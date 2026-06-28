@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>抖音日榜 · 2026-06-01</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+    background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 100%);
+    min-height: 100vh;
+    padding: 24px;
+    color: #e0e0e0;
+  }
+  .header {
+    text-align: center;
+    margin-bottom: 32px;
+  }
+  .header .logo { font-size: 48px; margin-bottom: 8px; }
+  .header h1 { font-size: 28px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+  .header .meta { font-size: 13px; color: #888; }
+  .notice {
+    background: #1a1a3e;
+    border-left: 4px solid #00d4ff;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin-bottom: 24px;
+    font-size: 13px;
+    color: #b0b0d0;
+  }
+  .stats-bar { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+  .stat-card {
+    flex: 1; min-width: 120px;
+    background: #1e1e3a;
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  }
+  .stat-card .num { font-size: 28px; font-weight: 700; color: #00d4ff; }
+  .stat-card .label { font-size: 12px; color: #888; margin-top: 4px; }
+  .table-wrap {
+    background: #16162e;
+    border-radius: 16px;
+    overflow-x: auto;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    margin-bottom: 24px;
+  }
+  table { width: 100%; border-collapse: collapse; min-width: 700px; }
+  thead th {
+    background: linear-gradient(135deg, #00d4ff, #007bff);
+    color: #fff;
+    padding: 14px 16px;
+    text-align: left;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  tbody tr { border-bottom: 1px solid #2a2a4a; transition: background 0.15s; }
+  tbody tr:hover { background: #1e1e42; }
+  tbody tr:last-child { border-bottom: none; }
+  td { padding: 12px 16px; font-size: 14px; vertical-align: middle; }
+  .rank-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; border-radius: 50%;
+    font-weight: 700; font-size: 14px;
+  }
+  .rank-1 { background: #FFD700; color: #5d4000; }
+  .rank-2 { background: #C0C0C0; color: #3d3d3d; }
+  .rank-3 { background: #CD7F32; color: #fff; }
+  .rank-other { background: #2a2a4a; color: #aaa; }
+  .account-name { font-weight: 600; color: #00d4ff; text-decoration: none; cursor: pointer; }
+  .account-name:hover { color: #fff; text-decoration: underline; }
+  .score { font-weight: 700; color: #00d4ff; }
+  .interaction { font-weight: 500; color: #ff6b9d; }
+  .category { color: #aaa; font-size: 12px; }
+  .export-bar { text-align: center; margin-bottom: 16px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    padding: 10px 24px; border-radius: 24px; border: none;
+    cursor: pointer; font-size: 14px; font-weight: 600;
+    transition: transform 0.1s, box-shadow 0.1s;
+  }
+  .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,212,255,0.3); }
+  .btn-primary { background: linear-gradient(135deg, #00d4ff, #007bff); color: #fff; }
+  .btn-secondary { background: #2a2a4a; color: #00d4ff; border: 2px solid #00d4ff; }
+  #subscription-section { margin-top: 40px; padding: 24px; background: #1a1a3e; border-radius: 12px; }
+  #subscription-section h3 { margin: 0 0 16px 0; font-size: 18px; color: #00d4ff; }
+  #subscription-section div[style*="font-weight: 500"] { color: #ccc; }
+  .cat-tag { background: #2a2a4a; padding: 4px 10px; border-radius: 16px; font-size: 13px; color: #aaa; }
+  .footer { text-align: center; font-size: 12px; color: #555; padding: 16px; }
+  @media print {
+    .export-bar { display: none; }
+    body { background: #fff; padding: 0; color: #000; }
+    .table-wrap { box-shadow: none; }
+    .header h1 { color: #000; }
+    .stat-card .num { color: #000; }
+    .account-name { color: #0066cc; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">🎮</div>
+  <h1>抖音日榜 · 游戏类</h1>
+  <div class="meta">数据日期：2026-06-01 &nbsp;|&nbsp; 共 50 个账号上榜</div>
+</div>
+
+<div class="notice">
+  💡 <strong>榜单说明</strong>：每日17:30，与实时数据存在差异。<br>
+  📐 <strong>综合评分（满分100）</strong>：根据达人在抖音的 <strong>总粉丝数</strong>、周期内的 <strong>粉丝增量</strong>、<strong>点赞增量</strong>、<strong>分享增量</strong> 以及 <strong>评论增量</strong> 加权计算所得。
+</div>
+
+<div class="stats-bar">
+  <div class="stat-card"><div class="num">50</div><div class="label">展示条数</div></div>
+  <div class="stat-card"><div class="num">1.5w+</div><div class="label">最高互动</div></div>
+</div>
+
+<div class="export-bar">
+  <button class="btn btn-primary" onclick="window.print()">🖨️ 打印 / 导出 PDF</button>
+  <button class="btn btn-secondary" id="downloadImgBtn" onclick="downloadAsImage()">📷 保存为图片</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script>
+async function downloadAsImage() {
+  const btn = document.getElementById('downloadImgBtn');
+  btn.textContent = '⏳ 生成中...';
+  btn.disabled = true;
+  try {
+    const element = document.querySelector('.table-wrap');
+    const canvas = await html2canvas(element, {
+      scale: 2, backgroundColor: '#16162e', useCORS: true
+    });
+    const link = document.createElement('a');
+    link.download = '抖音日榜_20260601.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    btn.textContent = '✅ 下载成功';
+    setTimeout(() => { btn.textContent = '📷 保存为图片'; btn.disabled = false; }, 2000);
+  } catch(e) {
+    alert('生成图片失败，请尝试使用浏览器截图');
+    btn.textContent = '📷 保存为图片';
+    btn.disabled = false;
+  }
+}
+</script>
+
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr>
+      <th>排名</th>
+      <th>账号名</th>
+      <th>综合评分</th>
+      <th>总粉丝数</th>
+      <th>新增粉丝</th>
+      <th>新增点赞</th>
+      <th>新增评论</th>
+      <th>新增分享</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><span class="rank-badge rank-1">1</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAABbfbXwyn0_KURTNltLU2u3kBiUDobl8e4xwmjikY0-B8uHtFS4bSYYWspr_t3U0W" target="_blank" class="account-name" title="点击查看抖音主页">MC杰杰&麦琪</a></td>
+      <td><span class="score">86</span></td>
+      <td>212.61w</td>
+      <td class="interaction">2320</td>
+      <td class="interaction">7391</td>
+      <td class="interaction">3993</td>
+      <td class="interaction">1165</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-2">2</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAfv7LTEF-AGA92M4Rmnrp-A1ENz9zB3XYFc89lT1RxI6eUlwb4GzTmbBCw_rMI1P-" target="_blank" class="account-name" title="点击查看抖音主页">异术罗馆长</a></td>
+      <td><span class="score">84</span></td>
+      <td>535.37w</td>
+      <td class="interaction">4524</td>
+      <td class="interaction">4363</td>
+      <td class="interaction">2727</td>
+      <td class="interaction">187</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-3">3</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAA1-8dtYlU7HlJ-GcuaFwXXpXJlQZr8ki_GtjhH_SY8Xao9k6jEyiH-K1DBE5Mxx0K" target="_blank" class="account-name" title="点击查看抖音主页">喵酱de手作</a></td>
+      <td><span class="score">83</span></td>
+      <td>387.18w</td>
+      <td class="interaction">2642</td>
+      <td class="interaction">8262</td>
+      <td class="interaction">835</td>
+      <td class="interaction">600</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">4</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAwgGW_DL4z7oNEmcKJUd4lmSIWDGsbhrfJL9W8AO_17U" target="_blank" class="account-name" title="点击查看抖音主页">辉哥游戏解说</a></td>
+      <td><span class="score">82</span></td>
+      <td>918.88w</td>
+      <td class="interaction">2563</td>
+      <td class="interaction">7668</td>
+      <td class="interaction">234</td>
+      <td class="interaction">497</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">5</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAmuYH81JnFEpHbmXoqS0PRsPWroJiFxYbMw0X1K7lR-k" target="_blank" class="account-name" title="点击查看抖音主页">等我刷把宗师</a></td>
+      <td><span class="score">77</span></td>
+      <td>534.42w</td>
+      <td class="interaction">1342</td>
+      <td class="interaction">15.96w</td>
+      <td class="interaction">2898</td>
+      <td class="interaction">7466</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">6</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAti-Mt4ZE_fB6YZNS9d41wTSA5P5NtnOY39Um7zJzvotWxhpjTwhOTqwLavRszuRb" target="_blank" class="account-name" title="点击查看抖音主页">子木仙（地铁逃生）</a></td>
+      <td><span class="score">77</span></td>
+      <td>432.51w</td>
+      <td class="interaction">8796</td>
+      <td class="interaction">8.73w</td>
+      <td class="interaction">3183</td>
+      <td class="interaction">2054</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">7</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAwHZPIKQuJCoNJnbYbyvCj-rkVdlSAw2mTfZqVGUp8PecZzduk6R4QRarqdwsOMOO" target="_blank" class="account-name" title="点击查看抖音主页">麻辣毛蛋儿</a></td>
+      <td><span class="score">76</span></td>
+      <td>658.10w</td>
+      <td class="interaction">5386</td>
+      <td class="interaction">4.19w</td>
+      <td class="interaction">3835</td>
+      <td class="interaction">2102</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">8</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAFhy9PPe-pHOCEfiB_vUT1SixbZ1tcoDdyYoDUvJ5femkSv_03G9F-WDAaDRWfx_q" target="_blank" class="account-name" title="点击查看抖音主页">Horcus</a></td>
+      <td><span class="score">76</span></td>
+      <td>307.55w</td>
+      <td class="interaction">7607</td>
+      <td class="interaction">10.79w</td>
+      <td class="interaction">729</td>
+      <td class="interaction">8443</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">9</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAEgyz6NCLAio8PavgBTAOxwexN-5AP0eAN2NOAaQk63u2iIDfwJQXnRC0JPJA_L4D" target="_blank" class="account-name" title="点击查看抖音主页">白泽（三角洲行动）</a></td>
+      <td><span class="score">74</span></td>
+      <td>1094.40w</td>
+      <td class="interaction">1845</td>
+      <td class="interaction">10.51w</td>
+      <td class="interaction">1449</td>
+      <td class="interaction">1890</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">10</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAqoyHWSa28DI1dG8NFjbBWRjoj3uxdqEwrV1SGJeCVSo" target="_blank" class="account-name" title="点击查看抖音主页">晚安姐姐（5.31日抢7杯！）</a></td>
+      <td><span class="score">73</span></td>
+      <td>746.66w</td>
+      <td class="interaction">6424</td>
+      <td class="interaction">3.45w</td>
+      <td class="interaction">835</td>
+      <td class="interaction">2461</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">11</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAATD7VyHi7aJpgM-XyXjNRNsmlMv4sbcMjD6If7rYp8t0dhNN37RdehiFTJ6XSe0Nu" target="_blank" class="account-name" title="点击查看抖音主页">大宝小老弟(三角洲行动)</a></td>
+      <td><span class="score">72</span></td>
+      <td>203.44w</td>
+      <td class="interaction">3844</td>
+      <td class="interaction">7.50w</td>
+      <td class="interaction">1393</td>
+      <td class="interaction">3869</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">12</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAEFD7UfHGL0ppALoDm8h1LB95hfM0ocEVARtOCgqkMfo" target="_blank" class="account-name" title="点击查看抖音主页">是个枷锁</a></td>
+      <td><span class="score">70</span></td>
+      <td>150.09w</td>
+      <td class="interaction">5870</td>
+      <td class="interaction">7.47w</td>
+      <td class="interaction">772</td>
+      <td class="interaction">3161</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">13</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAADqK-tbn2ZMh3UF8Y1YBXmeryarCltJl2vLlTgcFwg-JM-fTsh8rkmcgZIVJiA0ep" target="_blank" class="account-name" title="点击查看抖音主页">王爱莎！可爱</a></td>
+      <td><span class="score">69</span></td>
+      <td>219.46w</td>
+      <td class="interaction">5990</td>
+      <td class="interaction">2.24w</td>
+      <td class="interaction">2423</td>
+      <td class="interaction">825</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">14</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAA29pStlcqUWInvR3aZIBv79yvVO25N4mSz_6ay7NXwKuH9HBz-6dqt5cNcoZFIZGH" target="_blank" class="account-name" title="点击查看抖音主页">always聪聪（三角洲行动）</a></td>
+      <td><span class="score">68</span></td>
+      <td>181.79w</td>
+      <td class="interaction">769</td>
+      <td class="interaction">6.06w</td>
+      <td class="interaction">1128</td>
+      <td class="interaction">6488</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">15</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAA9AHUmEkse3CN2MUBpugZaQ70eDh2ozit2c2H0v79HBpkEwTiufQNa6vLz3UNYeK" target="_blank" class="account-name" title="点击查看抖音主页">闪球</a></td>
+      <td><span class="score">68</span></td>
+      <td>38.85w</td>
+      <td class="interaction">8749</td>
+      <td class="interaction">2.50w</td>
+      <td class="interaction">945</td>
+      <td class="interaction">9312</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">16</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAKC1O_HWG4PFh7C3B-Du2B6EK7Y68YNfqIui31L7oywc" target="_blank" class="account-name" title="点击查看抖音主页">隐秘的兔仙</a></td>
+      <td><span class="score">68</span></td>
+      <td>433.89w</td>
+      <td class="interaction">3675</td>
+      <td class="interaction">1.32w</td>
+      <td class="interaction">2344</td>
+      <td class="interaction">476</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">17</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAA6PsANeuwzgbXJuY_lbuJIPkVrpk6O_729XIs-gt9qIQ" target="_blank" class="account-name" title="点击查看抖音主页">小普（三角洲重生版）</a></td>
+      <td><span class="score">68</span></td>
+      <td>218.69w</td>
+      <td class="interaction">2231</td>
+      <td class="interaction">2.40w</td>
+      <td class="interaction">383</td>
+      <td class="interaction">7875</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">18</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAoci6TUlG8793b-4dCco1dfXBPJo-hwQePKUlY4VHwNG39hC81EzEpUpldtQ2DA19" target="_blank" class="account-name" title="点击查看抖音主页">我的世界皓宸</a></td>
+      <td><span class="score">68</span></td>
+      <td>277.56w</td>
+      <td class="interaction">1629</td>
+      <td class="interaction">1.90w</td>
+      <td class="interaction">734</td>
+      <td class="interaction">4708</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">19</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAJ_0iTgqnYEDRjRyrHfEw5_JXRLuEjF6-1IauRoSs4b0cbVjrgzI4RW5_Hfgt77Co" target="_blank" class="account-name" title="点击查看抖音主页">无畏契约电竞</a></td>
+      <td><span class="score">67</span></td>
+      <td>147.94w</td>
+      <td class="interaction">1445</td>
+      <td class="interaction">4.93w</td>
+      <td class="interaction">423</td>
+      <td class="interaction">8906</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">20</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAY59iwlw_hCO--Spf8WiZE5FqjwptZtUqr5zMotney6Y" target="_blank" class="account-name" title="点击查看抖音主页">悟凯（三角洲行动）</a></td>
+      <td><span class="score">67</span></td>
+      <td>95.61w</td>
+      <td class="interaction">3917</td>
+      <td class="interaction">3.63w</td>
+      <td class="interaction">481</td>
+      <td class="interaction">4858</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">21</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAA0plEjJa_eRXpUhYAKdsacL08pT_kVm0ByvYinE6_pxQHDQblBITv7RYL211NBGZC" target="_blank" class="account-name" title="点击查看抖音主页">AG超玩会一诺</a></td>
+      <td><span class="score">67</span></td>
+      <td>775.29w</td>
+      <td class="interaction">151</td>
+      <td class="interaction">4.79w</td>
+      <td class="interaction">1937</td>
+      <td class="interaction">1520</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">22</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAB-GU6vcwfrTcnHCeWUghQCcUyy1Lw8knY1J4qX08elq45SvG_r7-ms25btK69KnP" target="_blank" class="account-name" title="点击查看抖音主页">你的影月月(求点赞求推荐OWO)</a></td>
+      <td><span class="score">66</span></td>
+      <td>370.68w</td>
+      <td class="interaction">3366</td>
+      <td class="interaction">1.56w</td>
+      <td class="interaction">878</td>
+      <td class="interaction">862</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">23</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAv6N765U_8uGKZyTD4h81RmLHnFKHcQVp_TqAzZZ61d4" target="_blank" class="account-name" title="点击查看抖音主页">阿佩佩不想下饭</a></td>
+      <td><span class="score">66</span></td>
+      <td>206.35w</td>
+      <td class="interaction">2365</td>
+      <td class="interaction">3.52w</td>
+      <td class="interaction">993</td>
+      <td class="interaction">1272</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">24</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAx15jbxw3tKhEbdlkQuyXL9harQSZnwTNvIWdGsip5YE" target="_blank" class="account-name" title="点击查看抖音主页">唐启华</a></td>
+      <td><span class="score">66</span></td>
+      <td>191.60w</td>
+      <td class="interaction">2531</td>
+      <td class="interaction">1.47w</td>
+      <td class="interaction">786</td>
+      <td class="interaction">2808</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">25</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAigD3FYb1hZWuz_rrD1V25V2hlpCkO3NtT7GDMJlwvkI" target="_blank" class="account-name" title="点击查看抖音主页">Gus</a></td>
+      <td><span class="score">66</span></td>
+      <td>400.98w</td>
+      <td class="interaction">9127</td>
+      <td class="interaction">22.10w</td>
+      <td class="interaction">8113</td>
+      <td class="interaction">1.64w</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">26</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAKIvMlEhOmwIIXsmwhqMw4R9Grm2PLpO8L9PyDM1BzMY" target="_blank" class="account-name" title="点击查看抖音主页">王浩宇Whys</a></td>
+      <td><span class="score">65</span></td>
+      <td>531.16w</td>
+      <td class="interaction">10.44w</td>
+      <td class="interaction">8.01w</td>
+      <td class="interaction">8612</td>
+      <td class="interaction">2259</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">27</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAQXrg83g71nOogVJUHyqAXBBEIECalpsbwTjq_ngE5oM" target="_blank" class="account-name" title="点击查看抖音主页">bbFps（三角洲行动）</a></td>
+      <td><span class="score">65</span></td>
+      <td>312.25w</td>
+      <td class="interaction">3593</td>
+      <td class="interaction">1.17w</td>
+      <td class="interaction">208</td>
+      <td class="interaction">2217</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">28</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAASForPadPPv9GmWgbyZ_SoYTzqwUGitSJmuq-PtTFfC3MocLMGYYZC1xuvUpiJaSj" target="_blank" class="account-name" title="点击查看抖音主页">昊天（三角洲行动）</a></td>
+      <td><span class="score">64</span></td>
+      <td>756.37w</td>
+      <td class="interaction">1.47w</td>
+      <td class="interaction">7.01w</td>
+      <td class="interaction">5766</td>
+      <td class="interaction">8885</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">29</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAARanFgEIQUuBCGkLBj9UBF21pcXlgGIgmmAfPIPc4GBGSg3cLWKPgKCf9w62GyVVb" target="_blank" class="account-name" title="点击查看抖音主页">滕滕游记</a></td>
+      <td><span class="score">64</span></td>
+      <td>304.19w</td>
+      <td class="interaction">1563</td>
+      <td class="interaction">1.53w</td>
+      <td class="interaction">465</td>
+      <td class="interaction">1689</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">30</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAuE03tbyCAuv9Xv8ew7px5D2Avvh_A3DLbX84Y0Q1NPY" target="_blank" class="account-name" title="点击查看抖音主页">神时衍</a></td>
+      <td><span class="score">64</span></td>
+      <td>515.41w</td>
+      <td class="interaction">2958</td>
+      <td class="interaction">1.37w</td>
+      <td class="interaction">236</td>
+      <td class="interaction">754</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">31</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAsWXxS-KIWEuFJf2oy9E5RwDFzqIElxMsYccLGHCTh-J7z4WhTCehpsQwkv0n_8pl" target="_blank" class="account-name" title="点击查看抖音主页">崩坏星穹铁道</a></td>
+      <td><span class="score">60</span></td>
+      <td>536.46w</td>
+      <td class="interaction">1.54w</td>
+      <td class="interaction">9.17w</td>
+      <td class="interaction">4216</td>
+      <td class="interaction">2309</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">32</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAyxKY3uQtojZls91oiUCJgUQAqtecxHskRVshnb90taWJsvMVPyP1-9CGRCOOL470" target="_blank" class="account-name" title="点击查看抖音主页">安澜（三角洲行动）</a></td>
+      <td><span class="score">60</span></td>
+      <td>432.74w</td>
+      <td class="interaction">1.06w</td>
+      <td class="interaction">12.70w</td>
+      <td class="interaction">1771</td>
+      <td class="interaction">6691</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">33</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAYSOcrkBBqaB3slbNIj7wqaOLcGlJrjx7vl6XhruDUEw" target="_blank" class="account-name" title="点击查看抖音主页">林树（三角洲行动）</a></td>
+      <td><span class="score">59</span></td>
+      <td>1164.32w</td>
+      <td class="interaction">1.43w</td>
+      <td class="interaction">8.00w</td>
+      <td class="interaction">1340</td>
+      <td class="interaction">1815</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">34</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAsFL91bhVsEDoW39ZsExLDP6vhQ901VeWqx_eANoIMjJM4fKuSnka68tqyBHJs87j" target="_blank" class="account-name" title="点击查看抖音主页">煮酒论枭雄</a></td>
+      <td><span class="score">58</span></td>
+      <td>310.82w</td>
+      <td class="interaction">2777</td>
+      <td class="interaction">8.17w</td>
+      <td class="interaction">3011</td>
+      <td class="interaction">1.67w</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">35</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAU8b7sP85kR8WyOToF_a3wkLVoCcYyX1uE_eXtw-cyuqTGIrlUTWbhAyDRh1OVjmB" target="_blank" class="account-name" title="点击查看抖音主页">小牛马游戏解说</a></td>
+      <td><span class="score">58</span></td>
+      <td>101.63w</td>
+      <td class="interaction">2598</td>
+      <td class="interaction">17.87w</td>
+      <td class="interaction">4512</td>
+      <td class="interaction">1.76w</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">36</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAATkRbPS3bAiERRvEr_uvcxJAncotkyRjUJQLCwqOh2eSTPN6KaHf0Eh6V-yNPfC_v" target="_blank" class="account-name" title="点击查看抖音主页">EDG无畏契约分部</a></td>
+      <td><span class="score">57</span></td>
+      <td>59.52w</td>
+      <td class="interaction">7951</td>
+      <td class="interaction">13.08w</td>
+      <td class="interaction">2365</td>
+      <td class="interaction">2.83w</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">37</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAA4ieHXV9D3goH826v0VFAOJb7hmCgmY2kx56JBzhfrWGqve9LriR_N4E5OMCWRrZ-" target="_blank" class="account-name" title="点击查看抖音主页">DANK1NG</a></td>
+      <td><span class="score">57</span></td>
+      <td>219.99w</td>
+      <td class="interaction">5751</td>
+      <td class="interaction">9.41w</td>
+      <td class="interaction">1275</td>
+      <td class="interaction">1.21w</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">38</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAA8GTdiaFzhreFuaPlmQ3NeZkUbcaZW_Ff8w-FkxO6JkI" target="_blank" class="account-name" title="点击查看抖音主页">磊哥游戏</a></td>
+      <td><span class="score">57</span></td>
+      <td>435.82w</td>
+      <td class="interaction">1607</td>
+      <td class="interaction">10.51w</td>
+      <td class="interaction">849</td>
+      <td class="interaction">2.62w</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">39</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAd61SOvCplM1lOsnVcBKjGntfjcQ-gyFBN7PdPVOpE6k" target="_blank" class="account-name" title="点击查看抖音主页">无畏契约</a></td>
+      <td><span class="score">55</span></td>
+      <td>385.93w</td>
+      <td class="interaction">1117</td>
+      <td class="interaction">3.65w</td>
+      <td class="interaction">3309</td>
+      <td class="interaction">1.20w</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">40</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAzBEMyJ05BCPAE2UryP5ZX58SXhVbqGUMM_GKaM24xUM" target="_blank" class="account-name" title="点击查看抖音主页">麦小鼠的白袜</a></td>
+      <td><span class="score">55</span></td>
+      <td>94.56w</td>
+      <td class="interaction">3714</td>
+      <td class="interaction">15.48w</td>
+      <td class="interaction">907</td>
+      <td class="interaction">2.90w</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">41</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAA3VMClvBRj2zs3oFSAWyn_4TJLWh1DRj0J0Fu13sksEtJOnp06mHIjWaHu496NUyD" target="_blank" class="account-name" title="点击查看抖音主页">小猛的河马先生</a></td>
+      <td><span class="score">52</span></td>
+      <td>67.12w</td>
+      <td class="interaction">1.31w</td>
+      <td class="interaction">3.56w</td>
+      <td class="interaction">1426</td>
+      <td class="interaction">5075</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">42</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAA_luKxk0Nac97dP7DJA9f5O3ay6yMxea973SKucP7htDr7Bm_qacJdPcZrM0CUD_y" target="_blank" class="account-name" title="点击查看抖音主页">一只山鸡鱼</a></td>
+      <td><span class="score">52</span></td>
+      <td>186.27w</td>
+      <td class="interaction">193</td>
+      <td class="interaction">8.64w</td>
+      <td class="interaction">3406</td>
+      <td class="interaction">1.62w</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">43</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAlYx0yz5C-1-tGK9B2ZLz_-mbSQAEyJiszkLxKp_xKlGqhFkpqDss9vN6M_jk7iRK" target="_blank" class="account-name" title="点击查看抖音主页">酸了个奶</a></td>
+      <td><span class="score">51</span></td>
+      <td>35.01w</td>
+      <td class="interaction">2.42w</td>
+      <td class="interaction">2.47w</td>
+      <td class="interaction">5220</td>
+      <td class="interaction">1888</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">44</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAR-xl7idkk3FKVNKj0N7eJvxxEw9RUJ3fLK0Bjni1orBrkp3PfuDlKNRW-h7SGsFO" target="_blank" class="account-name" title="点击查看抖音主页">小牧牧</a></td>
+      <td><span class="score">51</span></td>
+      <td>42.30w</td>
+      <td class="interaction">1.42w</td>
+      <td class="interaction">4.64w</td>
+      <td class="interaction">2659</td>
+      <td class="interaction">2485</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">45</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAITp0aU5sr0S8MC_uDw1ZgIGwSqT4Dd96sULvfYhFImo" target="_blank" class="account-name" title="点击查看抖音主页">光遇周树</a></td>
+      <td><span class="score">51</span></td>
+      <td>38.89w</td>
+      <td class="interaction">1.03w</td>
+      <td class="interaction">2.39w</td>
+      <td class="interaction">7110</td>
+      <td class="interaction">1826</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">46</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAA7JftEZyQsA5AnLE8CETTQ17oFzY7fX8nFR2gj5E0icA" target="_blank" class="account-name" title="点击查看抖音主页">成成大王（三角洲行动）</a></td>
+      <td><span class="score">48</span></td>
+      <td>252.30w</td>
+      <td class="interaction">1.54w</td>
+      <td class="interaction">2.83w</td>
+      <td class="interaction">298</td>
+      <td class="interaction">885</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">47</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAQ4aY7J5vG-ZFRMsyrtutlPAv_AxBkr-4PI037dcFuBU" target="_blank" class="account-name" title="点击查看抖音主页">幻方影视</a></td>
+      <td><span class="score">48</span></td>
+      <td>200.14w</td>
+      <td class="interaction">9.19w</td>
+      <td class="interaction">3.70w</td>
+      <td class="interaction">276</td>
+      <td class="interaction">226</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">48</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAqCDcUgcHVoOMoi_0u-1b9M303FJR9qXKdtitf80nt4g" target="_blank" class="account-name" title="点击查看抖音主页">一乐店长</a></td>
+      <td><span class="score">47</span></td>
+      <td>373.90w</td>
+      <td class="interaction">8269</td>
+      <td class="interaction">15.39w</td>
+      <td class="interaction">2.34w</td>
+      <td class="interaction">1.30w</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">49</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAhOVLjv8YKxmJwGiJXKuIYmZ8Q89updm2gnMyMNU388A" target="_blank" class="account-name" title="点击查看抖音主页">超自然行动组</a></td>
+      <td><span class="score">44</span></td>
+      <td>239.49w</td>
+      <td class="interaction">2772</td>
+      <td class="interaction">10.02w</td>
+      <td class="interaction">1.03w</td>
+      <td class="interaction">5.41w</td>
+    </tr>
+    <tr>
+      <td><span class="rank-badge rank-other">50</span></td>
+      <td><a href="https://www.douyin.com/user/MS4wLjABAAAAK39U_-oCI3kHlLJ0IGeoOD5SIeSZW2SjXplRsHFy8II" target="_blank" class="account-name" title="点击查看抖音主页">陈大白</a></td>
+      <td><span class="score">43</span></td>
+      <td>1078.02w</td>
+      <td class="interaction">1.07w</td>
+      <td class="interaction">4.80w</td>
+      <td class="interaction">2.95w</td>
+      <td class="interaction">659</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<div id="subscription-section">
+  <h3>📬 订阅服务</h3>
+  <div style="margin-bottom: 12px;">
+    <div style="font-weight: 500; color: #ccc;">1️⃣ 是否需要订阅每日/周/月的抖音账号最新排名？</div>
+  </div>
+  <div>
+    <div style="font-weight: 500; color: #ccc; margin-bottom: 8px;">2️⃣ 是否需要订阅具体赛道的账号表现？我们支持：</div>
+    <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+      <span class="cat-tag">个人才艺</span><span class="cat-tag">生活vlog</span><span class="cat-tag">财富理财</span>
+      <span class="cat-tag">二次元</span><span class="cat-tag">居家装修</span><span class="cat-tag">学习教育</span>
+      <span class="cat-tag">小剧场</span><span class="cat-tag">数码科技</span><span class="cat-tag">旅行</span>
+      <span class="cat-tag">美食</span><span class="cat-tag">化妆美容</span><span class="cat-tag">动物</span>
+      <span class="cat-tag">亲子</span><span class="cat-tag">汽车</span><span class="cat-tag">情感</span>
+      <span class="cat-tag">三农</span><span class="cat-tag">健康医学</span><span class="cat-tag">潮流风尚</span>
+      <span class="cat-tag">舞蹈才艺</span><span class="cat-tag">颜值造型</span><span class="cat-tag">人文</span>
+      <span class="cat-tag">音乐</span><span class="cat-tag">影视</span><span class="cat-tag">身体锻炼</span>
+      <span class="cat-tag">体育</span><span class="cat-tag">明星娱乐</span><span class="cat-tag">游戏</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// Add row click to open profile
+document.querySelectorAll('.account-name').forEach(el => {
+  el.addEventListener('click', function(e) { e.stopPropagation(); });
+});
+</script>
+</body>
+</html>

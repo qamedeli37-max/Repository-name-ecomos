@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "skills": {
+    "find-skill": {
+      "version": "1.0.0",
+      "installedAt": 1780409570908
+    },
+    "skill-vetter": {
+      "version": "1.0.0",
+      "installedAt": 1780409770663
+    },
+    "self-improving": {
+      "version": "1.2.16",
+      "installedAt": 1780409898616
+    },
+    "skill-dual-publish": {
+      "version": "1.0.0",
+      "installedAt": 1780413350961
+    },
+    "douyin-top-account": {
+      "version": "1.0.3",
+      "installedAt": 1780414476895
+    },
+    "openclaw-doctor": {
+      "version": "1.0.0",
+      "installedAt": 1780497263536
+    }
+  }
+}

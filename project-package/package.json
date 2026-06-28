@@ -1,0 +1,22 @@
+{
+  "name": "deepseek-project",
+  "version": "1.0.0",
+  "description": "DeepSeek API 集成项目 — 支持 Node.js 与 Python 双端运行",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node src/test-api.js"
+  },
+  "dependencies": {
+    "openai": "^4.77.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.1",
+    "cors": "^2.8.5",
+    "winston": "^3.17.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT"
+}

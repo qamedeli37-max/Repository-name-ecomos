@@ -1,0 +1,17 @@
+{
+  "name": "openclaw-agent",
+  "version": "1.0.0",
+  "description": "OpenClaw AI Agent — DeepSeek API 驱动的一键部署 AI 助手",
+  "system_prompt": "你是一个有帮助的AI助手，名叫 OpenClaw。请用中文回答用户的问题。",
+  "model": "deepseek-chat",
+  "temperature": 0.7,
+  "max_tokens": 4096,
+  "capabilities": [
+    "文本对话",
+    "代码生成",
+    "知识问答",
+    "任务规划"
+  ],
+  "plugins": [],
+  "created_at": "2026-06-18"
+}

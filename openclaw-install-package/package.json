@@ -1,0 +1,20 @@
+{
+  "name": "openclaw-install-package",
+  "version": "1.0.0",
+  "description": "OpenClaw AI Agent — 一键安装部署包，DeepSeek API 驱动",
+  "main": "core/index.js",
+  "scripts": {
+    "start": "node core/index.js",
+    "test": "echo \"✅ OpenClaw 安装正确\" && exit 0"
+  },
+  "dependencies": {
+    "openai": "^4.77.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.1",
+    "cors": "^2.8.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT"
+}

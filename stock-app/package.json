@@ -1,0 +1,31 @@
+{
+  "name": "stock-viewer",
+  "version": "1.0.0",
+  "description": "📊 股票波动看板 — 桌面版",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable"
+  },
+  "build": {
+    "appId": "com.stock.viewer",
+    "productName": "波动看板",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "portable",
+        "nsis"
+      ],
+      "icon": null
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "devDependencies": {
+    "electron": "^42.4.1"
+  }
+}

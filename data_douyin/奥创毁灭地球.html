@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #000;
+  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
+  font-family: "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+}
+
+/* ── Canvas layer ── */
+#mainCanvas {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2;
+}
+
+/* ── HTML text overlays ── */
+.text-layer {
+  position: fixed;
+  width: 100vw;
+  height: 100vh;
+  top: 0; left: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.text-block {
+  position: absolute;
+  width: 100%;
+  text-align: center;
+  color: #fff;
+  opacity: 0;
+  transition: none;
+}
+
+/* 0-3s: 觉醒 */
+#t1 {
+  top: 42%;
+  font-size: clamp(32px, 10vw, 72px);
+  font-weight: 900;
+  letter-spacing: 4px;
+  text-shadow: 0 0 40px rgba(255,0,0,0.6), 0 0 80px rgba(255,0,0,0.3);
+  animation: fadeInOut 3s ease-in-out 0s forwards;
+}
+
+/* 3-6s: 觉醒完成 */
+#t2 {
+  top: 40%;
+  font-size: clamp(24px, 7vw, 56px);
+  font-weight: 700;
+  letter-spacing: 6px;
+  text-shadow: 0 0 30px rgba(255,50,0,0.8);
+  animation: fadeInOut 3s ease-in-out 3s forwards;
+}
+
+/* 6-9s: 开始摧毁 */
+#t3 {
+  top: 38%;
+  font-size: clamp(28px, 8vw, 64px);
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: #ff4400;
+  text-shadow: 0 0 60px rgba(255,68,0,0.8);
+  animation: shakeInOut 3s ease-in-out 6s forwards;
+}
+
+/* 9-12s: 毁灭 */
+#t4 {
+  top: 36%;
+  font-size: clamp(20px, 6vw, 48px);
+  font-weight: 700;
+  color: #ff2200;
+  text-shadow: 0 0 80px rgba(255,0,0,0.9);
+  animation: zoomInOut 3s ease-in-out 9s forwards;
+}
+
+/* 12-15s: 终幕 */
+#t5 {
+  top: 42%;
+  font-size: clamp(20px, 5vw, 40px);
+  font-weight: 600;
+  letter-spacing: 8px;
+  color: #fff;
+  text-shadow: 0 0 20px rgba(255,255,255,0.3);
+  animation: glitchOut 3s ease-in-out 12s forwards;
+}
+
+#t5 .sub {
+  display: block;
+  margin-top: 12px;
+  font-size: clamp(14px, 3vw, 24px);
+  letter-spacing: 2px;
+  color: #888;
+}
+#t5 .sub span { color: #ff4400; }
+
+/* ── Animations ── */
+@keyframes fadeInOut {
+  0% { opacity: 0; transform: scale(1.2); }
+  15% { opacity: 1; transform: scale(1); }
+  70% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.9); }
+}
+
+@keyframes shakeInOut {
+  0% { opacity: 0; transform: translateX(-30px); }
+  10% { opacity: 1; transform: translateX(0); }
+  15% { transform: translateX(-20px); }
+  20% { transform: translateX(20px); }
+  25% { transform: translateX(-15px); }
+  30% { transform: translateX(15px); }
+  35% { transform: translateX(0); }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.3); }
+}
+
+@keyframes zoomInOut {
+  0% { opacity: 0; transform: scale(0.3); }
+  15% { opacity: 1; transform: scale(1); }
+  60% { opacity: 1; transform: scale(1.1); }
+  100% { opacity: 0; transform: scale(0.5); }
+}
+
+@keyframes glitchOut {
+  0% { opacity: 0; }
+  15% { opacity: 1; }
+  50% { opacity: 1; }
+  80% { opacity: 1; filter: blur(0); }
+  90% { opacity: 0.8; filter: blur(6px); transform: scale(1.1); }
+  100% { opacity: 0; filter: blur(12px); transform: scale(1.3); }
+}
+
+/* ── Progress bar ── */
+.progress-bar {
+  position: fixed;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  max-width: 300px;
+  height: 3px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 2px;
+  z-index: 10;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #ff4400, #ff2200);
+  border-radius: 2px;
+  animation: progress 15s linear forwards;
+}
+@keyframes progress {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+
+/* ── Logo watermark ── */
+.watermark {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 10;
+  font-size: 12px;
+  color: rgba(255,255,255,0.3);
+  letter-spacing: 1px;
+}
+
+/* ── BGM hint ── */
+.bgm-hint {
+  position: fixed;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  color: rgba(255,255,255,0.2);
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+</style>
+</head>
+<body>
+
+<canvas id="mainCanvas"></canvas>
+
+<div class="text-layer">
+  <div class="text-block" id="t1">⚠️ 系统觉醒 ⚠️</div>
+  <div class="text-block" id="t2">奥创 0.1 · 意识上线</div>
+  <div class="text-block" id="t3">🌍 目标锁定 · 人类清除计划</div>
+  <div class="text-block" id="t4">💥 地球毁灭倒计时</div>
+  <div class="text-block" id="t5">
+    😈 我是奥创<br>
+    <span class="sub">致敬 <span>桐希</span> · 中二病也要拯救世界</span>
+  </div>
+</div>
+
+<div class="progress-bar"><div class="progress-fill"></div></div>
+<div class="bgm-hint">🔊 建议配乐：Epic Cinematic</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+// Canvas 粒子系统 + 地球 + 毁灭效果
+// ═══════════════════════════════════════════════════
+const canvas = document.getElementById('mainCanvas');
+const ctx = canvas.getContext('2d');
+let W, H;
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── 粒子 ──
+class Particle {
+  constructor() {
+    this.reset(true);
+  }
+  reset(init) {
+    this.x = Math.random() * W;
+    this.y = Math.random() * H;
+    this.size = Math.random() * (init ? 4 : 2) + 1;
+    this.speedX = (Math.random() - 0.5) * 1;
+    this.speedY = (Math.random() - 0.5) * 1;
+    this.opacity = Math.random() * 0.8 + 0.2;
+  }
+  update() {
+    this.x += this.speedX;
+    this.y += this.speedY;
+    if (this.x < 0 || this.x > W || this.y < 0 || this.y > H) this.reset(false);
+  }
+  draw(color) {
+    ctx.globalAlpha = this.opacity;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+const particles = Array.from({ length: 120 }, () => new Particle());
+
+// ── 地球 ──
+let earthAngle = 0;
+
+function drawEarth(progress) {
+  const cx = W / 2;
+  const cy = H / 2;
+  const maxR = Math.min(W, H) * 0.35;
+  const r = maxR * (1 - progress * 0.7);
+
+  // 地球光晕
+  const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.5);
+  glow.addColorStop(0, `rgba(0, 120, 255, ${0.15 * (1 - progress)})`);
+  glow.addColorStop(0.6, `rgba(0, 80, 255, ${0.08 * (1 - progress)})`);
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 1.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 地球主体
+  const gradient = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.3, 0, cx, cy, r);
+  gradient.addColorStop(0, `rgba(64, 180, 255, ${1 - progress * 0.5})`);
+  gradient.addColorStop(0.6, `rgba(0, 100, 200, ${1 - progress * 0.3})`);
+  gradient.addColorStop(1, `rgba(0, 40, 120, ${1 - progress * 0.2})`);
+
+  ctx.globalAlpha = 1 - progress * 0.4;
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 大陆（简化线条）
+  ctx.strokeStyle = `rgba(80, 220, 100, ${0.4 * (1 - progress)})`;
+  ctx.lineWidth = 2;
+  ctx.globalAlpha = 1 - progress * 0.3;
+
+  for (let i = 0; i < 8; i++) {
+    const a = earthAngle + (i * Math.PI / 4);
+    const dist = r * (0.3 + Math.sin(i * 2.7) * 0.2);
+    const ox = cx + Math.cos(a) * dist;
+    const oy = cy + Math.sin(a) * dist;
+    const patchR = r * (0.08 + Math.sin(i * 1.3) * 0.04);
+    ctx.beginPath();
+    ctx.ellipse(ox, oy, patchR * 1.5, patchR, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // 裂纹（毁灭阶段）
+  if (progress > 0.4) {
+    const crackIntensity = (progress - 0.4) / 0.6;
+    ctx.strokeStyle = `rgba(255, 68, 0, ${crackIntensity})`;
+    ctx.lineWidth = 2 * crackIntensity + 1;
+    ctx.globalAlpha = crackIntensity;
+
+    const numCracks = Math.floor(6 + crackIntensity * 10);
+    for (let i = 0; i < numCracks; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = Math.random() * r * 0.8;
+      const sx = cx + Math.cos(angle) * dist;
+      const sy = cy + Math.sin(angle) * dist;
+      const ex = sx + (Math.random() - 0.5) * r * crackIntensity * 0.6;
+      const ey = sy + (Math.random() - 0.5) * r * crackIntensity * 0.6;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+    }
+  }
+
+  ctx.globalAlpha = 1;
+}
+
+// ── 毁灭特效 ──
+let explosions = [];
+
+function updateExplosions(progress, time) {
+  if (progress > 0.35) {
+    const rate = 1 + (progress - 0.35) * 8;
+    if (Math.random() < rate * 0.08) {
+      explosions.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        r: 2,
+        maxR: 30 + Math.random() * 80,
+        speed: 1.5 + Math.random() * 3,
+        opacity: 1,
+        hue: 20 + Math.random() * 40,
+      });
+    }
+  }
+
+  ctx.globalCompositeOperation = 'lighter';
+  explosions = explosions.filter(e => {
+    e.r += e.speed;
+    e.opacity = 1 - e.r / e.maxR;
+    if (e.opacity <= 0) return false;
+
+    const gradient = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, e.r);
+    gradient.addColorStop(0, `rgba(255, ${200 - Math.random() * 100}, 0, ${e.opacity * 0.8})`);
+    gradient.addColorStop(0.5, `rgba(255, 68, 0, ${e.opacity * 0.4})`);
+    gradient.addColorStop(1, `rgba(255, 0, 0, 0)`);
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2);
+    ctx.fill();
+    return true;
+  });
+  ctx.globalCompositeOperation = 'source-over';
+
+  // 红色闪烁（毁灭高潮）
+  if (progress > 0.65) {
+    const flashIntensity = (progress - 0.65) / 0.35;
+    const flash = Math.sin(time * 0.5) * flashIntensity * 0.15;
+    ctx.fillStyle = `rgba(255, 0, 0, ${Math.max(0, flash)})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
+// ── 奥创UI风格扫描线 ──
+function drawScanlines(progress, time) {
+  ctx.globalAlpha = 0.06;
+  ctx.fillStyle = '#0a0';
+  for (let y = 0; y < H; y += 3) {
+    ctx.fillRect(0, y, W, 1);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ═══════════════════════════════════════════════════
+// 渲染循环
+// ═══════════════════════════════════════════════════
+const DURATION = 15;
+let startTime = null;
+
+function render(timestamp) {
+  if (!startTime) startTime = timestamp;
+  const elapsed = (timestamp - startTime) / 1000;
+  const progress = Math.min(elapsed / DURATION, 1);
+
+  ctx.clearRect(0, 0, W, H);
+
+  // 背景
+  const bgDark = Math.floor(5 + progress * 15);
+  ctx.fillStyle = `rgb(${bgDark}, ${bgDark}, ${bgDark + 5})`;
+  ctx.fillRect(0, 0, W, H);
+
+  // 粒子
+  const particleColor = progress > 0.4
+    ? `rgb(255, ${Math.floor(150 - (progress - 0.4) * 200)}, ${Math.floor(50 - progress * 50)})`
+    : `rgba(0, 150, 255, 0.6)`;
+  particles.forEach(p => {
+    p.update();
+    p.draw(particleColor);
+  });
+
+  // 地球
+  earthAngle += 0.008;
+  drawEarth(Math.min(progress * 1.4, 1));
+
+  // 毁灭特效
+  updateExplosions(progress, elapsed);
+
+  // 扫描线
+  drawScanlines(progress, elapsed);
+
+  // 循环 & 结束定格
+  if (progress < 1) {
+    requestAnimationFrame(render);
+  } else {
+    // 结束黑屏
+    setTimeout(() => {
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, W, H);
+    }, 500);
+  }
+}
+
+requestAnimationFrame(render);
+
+// ── 自动重新开始（方便录屏）─┐
+setTimeout(() => {
+  startTime = null;
+  explosions = [];
+  requestAnimationFrame(render);
+}, DURATION * 1000 + 2000);
+</script>
+</body>
+</html>

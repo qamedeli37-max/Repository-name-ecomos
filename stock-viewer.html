@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>📊 股票波动看板</title>
+    <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js">
+    </script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg: #0d1117;
+            --surface: #161b22;
+            --surface2: #1c2333;
+            --border: #30363d;
+            --text: #e6edf3;
+            --text2: #8b949e;
+            --green: #26a69a;
+            --red: #ef5350;
+            --accent: #58a6ff;
+            --accent2: #1f6feb;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 16px;
+        }
+
+        .app {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        /* ===== HEADER ===== */
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+        }
+
+        .logo {
+            font-size: 22px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent), #a371f7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            white-space: nowrap;
+        }
+
+        .search-box {
+            flex: 1;
+            min-width: 180px;
+            display: flex;
+            gap: 6px;
+        }
+
+        .search-box input {
+            flex: 1;
+            padding: 8px 14px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--surface);
+            color: var(--text);
+            font-size: 14px;
+            outline: none;
+            transition: border 0.2s;
+        }
+
+        .search-box input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
+        }
+
+        .search-box input::placeholder {
+            color: var(--text2);
+        }
+
+        .search-box button {
+            padding: 8px 18px;
+            border: none;
+            border-radius: 8px;
+            background: var(--accent2);
+            color: #fff;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .search-box button:hover {
+            background: #388bfd;
+        }
+
+        .search-hint {
+            font-size: 11px;
+            color: var(--text2);
+            margin-top: 2px;
+            width: 100%;
+        }
+
+        /* ===== PRESETS ===== */
+        .presets {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+
+        .presets .label {
+            font-size: 12px;
+            color: var(--text2);
+            line-height: 30px;
+            margin-right: 4px;
+        }
+
+        .preset-btn {
+            padding: 4px 12px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--surface);
+            color: var(--text2);
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .preset-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: rgba(88, 166, 255, 0.08);
+        }
+
+        .preset-btn.active {
+            border-color: var(--accent);
+            color: #fff;
+            background: var(--accent2);
+        }
+
+        .preset-group {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .preset-divider {
+            color: var(--border);
+            margin: 0 6px;
+            font-size: 14px;
+        }
+
+        /* ===== PRICE INFO ===== */
+        .price-bar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: baseline;
+            gap: 12px 24px;
+            padding: 12px 16px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            margin-bottom: 12px;
+        }
+
+        .price-main {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+        }
+
+        .price-current {
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .price-change {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .price-change.up {
+            color: var(--green);
+        }
+        .price-change.down {
+            color: var(--red);
+        }
+
+        .price-change .icon {
+            font-size: 14px;
+        }
+
+        .price-details {
+            display: flex;
+            gap: 18px;
+            flex-wrap: wrap;
+            font-size: 13px;
+            color: var(--text2);
+        }
+
+        .price-details .item {
+            display: flex;
+            gap: 4px;
+        }
+
+        .price-details .item .val {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        /* ===== TIMEFRAMES ===== */
+        .timeframes {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+
+        .tf-btn {
+            padding: 5px 14px;
+            border: 1px solid transparent;
+            border-radius: 6px;
+            background: transparent;
+            color: var(--text2);
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .tf-btn:hover {
+            color: var(--text);
+            background: var(--surface);
+        }
+
+        .tf-btn.active {
+            color: #fff;
+            background: var(--accent2);
+            border-color: var(--accent2);
+        }
+
+        /* ===== CHART ===== */
+        .chart-wrap {
+            position: relative;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 8px;
+            overflow: hidden;
+        }
+
+        #chart {
+            width: 100%;
+            height: 520px;
+        }
+
+        .loading {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(13, 17, 23, 0.75);
+            z-index: 10;
+            font-size: 15px;
+            color: var(--text2);
+            transition: opacity 0.25s;
+        }
+
+        .loading.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .loading .spinner {
+            width: 28px;
+            height: 28px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            margin-right: 12px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .error-msg {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: var(--red);
+            font-size: 14px;
+            text-align: center;
+            z-index: 5;
+            background: rgba(13, 17, 23, 0.85);
+            padding: 20px 28px;
+            border-radius: 10px;
+            border: 1px solid rgba(239, 83, 80, 0.3);
+            display: none;
+        }
+
+        /* ===== FOOTER ===== */
+        .footer {
+            margin-top: 12px;
+            font-size: 11px;
+            color: var(--text2);
+            text-align: center;
+            padding: 8px;
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 640px) {
+            .price-current {
+                font-size: 26px;
+            }
+            #chart {
+                height: 380px;
+            }
+            .price-bar {
+                padding: 10px 12px;
+                gap: 8px 16px;
+            }
+            .price-details {
+                gap: 10px;
+                font-size: 12px;
+            }
+            .preset-btn {
+                font-size: 11px;
+                padding: 3px 8px;
+            }
+            body {
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app">
+
+        <!-- HEADER -->
+        <div class="header">
+            <div class="logo">📊 波动看板</div>
+            <div class="search-box">
+                <input type="text" id="symbolInput" placeholder="输入股票代码，如 600519.SS / AAPL / 0700.HK" spellcheck="false" />
+                <button id="searchBtn">查 看</button>
+            </div>
+        </div>
+
+        <!-- PRESETS -->
+        <div class="presets">
+            <span class="label">🇨🇳</span>
+            <div class="preset-group" id="presetsCn"></div>
+            <span class="preset-divider">|</span>
+            <span class="label">🇺🇸</span>
+            <div class="preset-group" id="presetsUs"></div>
+            <span class="preset-divider">|</span>
+            <span class="label">🇭🇰</span>
+            <div class="preset-group" id="presetsHk"></div>
+        </div>
+
+        <!-- PRICE BAR -->
+        <div class="price-bar" id="priceBar">
+            <div class="price-main">
+                <span class="price-current" id="priceCurrent">—</span>
+                <span class="price-change" id="priceChange"><span class="icon"></span>—</span>
+            </div>
+            <div class="price-details">
+                <span class="item">昨收 <span class="val" id="pdPrev">—</span></span>
+                <span class="item">今开 <span class="val" id="pdOpen">—</span></span>
+                <span class="item">最高 <span class="val" id="pdHigh">—</span></span>
+                <span class="item">最低 <span class="val" id="pdLow">—</span></span>
+                <span class="item">成交量 <span class="val" id="pdVol">—</span></span>
+                <span class="item">货币 <span class="val" id="pdCurr">—</span></span>
+            </div>
+        </div>
+
+        <!-- TIMEFRAMES -->
+        <div class="timeframes">
+            <button class="tf-btn" data-tf="1d">1天</button>
+            <button class="tf-btn" data-tf="5d">5天</button>
+            <button class="tf-btn active" data-tf="1mo">1月</button>
+            <button class="tf-btn" data-tf="3mo">3月</button>
+            <button class="tf-btn" data-tf="6mo">6月</button>
+            <button class="tf-btn" data-tf="1y">1年</button>
+            <button class="tf-btn" data-tf="5y">5年</button>
+        </div>
+
+        <!-- CHART -->
+        <div class="chart-wrap">
+            <div id="chart"></div>
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                加载数据中...
+            </div>
+            <div class="error-msg" id="errorMsg"></div>
+        </div>
+
+        <div class="footer">
+            数据来源：Yahoo Finance · 仅供学习参考，不构成投资建议
+        </div>
+    </div>
+
+    <script>
+        // ============================================================
+        //  CONFIG
+        // ============================================================
+        const PRESETS_CN = [
+            ['上证指数', '000001.SS'],
+            ['茅台', '600519.SS'],
+            ['宁德时代', '300750.SZ'],
+            ['比亚迪', '002594.SZ'],
+            ['招商银行', '600036.SS'],
+            ['平安', '601318.SS'],
+        ];
+        const PRESETS_US = [
+            ['AAPL', 'AAPL'],
+            ['TSLA', 'TSLA'],
+            ['NVDA', 'NVDA'],
+            ['MSFT', 'MSFT'],
+            ['GOOGL', 'GOOGL'],
+            ['AMZN', 'AMZN'],
+            ['META', 'META'],
+        ];
+        const PRESETS_HK = [
+            ['腾讯', '0700.HK'],
+            ['阿里', '9988.HK'],
+            ['美团', '3690.HK'],
+            ['小米', '1810.HK'],
+        ];
+
+        const TF_MAP = {
+            '1d': { period2: 0, period1: 1, interval: '5m' },
+            '5d': { period2: 0, period1: 5, interval: '15m' },
+            '1mo': { period2: 0, period1: 30, interval: '1h' },
+            '3mo': { period2: 0, period1: 90, interval: '1d' },
+            '6mo': { period2: 0, period1: 180, interval: '1d' },
+            '1y': { period2: 0, period1: 365, interval: '1wk' },
+            '5y': { period2: 0, period1: 1825, interval: '1mo' },
+        };
+
+        // ============================================================
+        //  STATE
+        // ============================================================
+        let currentSymbol = '600519.SS';
+        let currentTf = '1mo';
+        let chart = null;
+        let candleSeries = null;
+        let volumeSeries = null;
+
+        // ============================================================
+        //  DOM REFS
+        // ============================================================
+        const el = (id) => document.getElementById(id);
+        const $symbolInput = el('symbolInput');
+        const $searchBtn = el('searchBtn');
+        const $priceCurrent = el('priceCurrent');
+        const $priceChange = el('priceChange');
+        const $pdPrev = el('pdPrev');
+        const $pdOpen = el('pdOpen');
+        const $pdHigh = el('pdHigh');
+        const $pdLow = el('pdLow');
+        const $pdVol = el('pdVol');
+        const $pdCurr = el('pdCurr');
+        const $loading = el('loading');
+        const $errorMsg = el('errorMsg');
+        const $chartEl = el('chart');
+        const $tfBtns = document.querySelectorAll('.tf-btn');
+
+        // ============================================================
+        //  INIT PRESETS
+        // ============================================================
+        function renderPresets(container, list) {
+            list.forEach(([label, symbol]) => {
+                const btn = document.createElement('button');
+                btn.className = 'preset-btn';
+                btn.textContent = label;
+                btn.dataset.symbol = symbol;
+                btn.addEventListener('click', () => loadStock(symbol));
+                container.appendChild(btn);
+            });
+        }
+        renderPresets(el('presetsCn'), PRESETS_CN);
+        renderPresets(el('presetsUs'), PRESETS_US);
+        renderPresets(el('presetsHk'), PRESETS_HK);
+
+        // ============================================================
+        //  FORMAT HELPERS
+        // ============================================================
+        function fmtNum(n) {
+            if (n == null || isNaN(n)) return '—';
+            return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function fmtVolume(v) {
+            if (v == null || isNaN(v)) return '—';
+            if (v >= 1e8) return (v / 1e8).toFixed(2) + '亿';
+            if (v >= 1e4) return (v / 1e4).toFixed(2) + '万';
+            return v.toLocaleString();
+        }
+
+        function fmtTimestamp(ts) {
+            const d = new Date(ts * 1000);
+            const pad = (n) => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        }
+
+        // ============================================================
+        //  YAHOO FINANCE API
+        // ============================================================
+        async function fetchChart(symbol, tf) {
+            const now = Math.floor(Date.now() / 1000);
+            const cfg = TF_MAP[tf] || TF_MAP['1mo'];
+            const period2 = now;
+            const period1 = now - cfg.period1 * 86400;
+
+            const CORS_PROXIES = [
+            (u) => u,
+            (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+            (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+            (u) => `https://api.allorigins.io/raw?url=${encodeURIComponent(u)}`,
+        ];
+
+        async function tryFetch(url, idx) {
+            if (idx >= CORS_PROXIES.length) {
+                throw new Error('无法连接股票数据源，请检查网络/代理');
+            }
+            try {
+                const r = await fetch(CORS_PROXIES[idx](url), { signal: AbortSignal.timeout(10000) });
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                let j = await r.json();
+                if (j?.contents && typeof j.contents === 'string') j = JSON.parse(j.contents);
+                if (j?.status && j?.contents && typeof j.contents === 'object') j = j.contents;
+                return j;
+            } catch (_) {
+                return tryFetch(url, idx + 1);
+            }
+        }
+
+        async function fetchChart(symbol, tf) {
+            const now = Math.floor(Date.now() / 1000);
+            const cfg = TF_MAP[tf] || TF_MAP['1mo'];
+            const period2 = now;
+            const period1 = now - cfg.period1 * 86400;
+
+            const url =
+                `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${period1}&period2=${period2}&interval=${cfg.interval}&includePrePost=false`;
+
+            const json = await tryFetch(url, 0);
+            const err = json?.chart?.error;
+            if (err) throw new Error(err.description || 'Yahoo Finance 返回错误');
+            const result = json?.chart?.result?.[0];
+            if (!result) throw new Error('未找到该股票数据，请检查股票代码');
+            return result;
+        }
+
+        // ============================================================
+        //  PARSE DATA
+        // ============================================================
+        function parseData(result) {
+            const meta = result.meta || {};
+            const timestamps = result.timestamp || [];
+            const quote = result.indicators?.quote?.[0] || {};
+            const opens = quote.open || [];
+            const highs = quote.high || [];
+            const lows = quote.low || [];
+            const closes = quote.close || [];
+            const volumes = quote.volume || [];
+            const adjclose = result.indicators?.adjclose?.[0]?.adjclose || [];
+
+            const candles = [];
+            const vols = [];
+
+            for (let i = 0; i < timestamps.length; i++) {
+                const o = opens[i];
+                const h = highs[i];
+                const l = lows[i];
+                const c = closes[i];
+                const v = volumes[i];
+                if (o == null || h == null || l == null || c == null || v == null) continue;
+                if (o === 0 && h === 0 && l === 0 && c === 0) continue;
+
+                candles.push({
+                    time: timestamps[i],
+                    open: o,
+                    high: h,
+                    low: l,
+                    close: c,
+                });
+                vols.push({
+                    time: timestamps[i],
+                    value: v,
+                    color: c >= o ? '#26a69a66' : '#ef535066',
+                });
+            }
+
+            // current price info
+            const last = closes[closes.length - 1];
+            const prevClose = meta.chartPreviousClose || meta.previousClose || closes[closes.length - 2] || last;
+            const change = last - prevClose;
+            const changePct = prevClose !== 0 ? (change / prevClose) * 100 : 0;
+
+            return {
+                candles,
+                volumes: vols,
+                meta: {
+                    symbol: meta.symbol || symbol,
+                    currency: meta.currency || 'USD',
+                    regularMarketPrice: meta.regularMarketPrice || last,
+                    previousClose: meta.chartPreviousClose || meta.previousClose || prevClose,
+                    regularMarketOpen: meta.regularMarketOpen || opens[opens.length - 1] || last,
+                    dayHigh: meta.dayHigh || (highs.length ? highs[highs.length - 1] : last),
+                    dayLow: meta.dayLow || (lows.length ? lows[lows.length - 1] : last),
+                    regularMarketVolume: meta.regularMarketVolume || (volumes.length ? volumes[volumes.length - 1] : 0),
+                    lastPrice: last,
+                    change,
+                    changePct,
+                }
+            };
+        }
+
+        // ============================================================
+        //  RENDER CHART
+        // ============================================================
+        function initChart() {
+            if (chart) {
+                chart.remove();
+                chart = null;
+                candleSeries = null;
+                volumeSeries = null;
+            }
+
+            chart = LightweightCharts.createChart($chartEl, {
+                layout: {
+                    background: { type: 'solid', color: '#131a26' },
+                    textColor: '#8b949e',
+                    fontSize: 12,
+                },
+                grid: {
+                    vertLines: { color: '#1c2333' },
+                    horzLines: { color: '#1c2333' },
+                },
+                crosshair: {
+                    mode: LightweightCharts.CrosshairMode.Normal,
+                    vertLine: { color: '#58a6ff', width: 1, style: LightweightCharts.LineStyle.Dashed, labelBackgroundColor: '#1f6feb' },
+                    horzLine: { color: '#58a6ff', width: 1, style: LightweightCharts.LineStyle.Dashed, labelBackgroundColor: '#1f6feb' },
+                },
+                timeScale: {
+                    borderColor: '#30363d',
+                    timeVisible: true,
+                    secondsVisible: false,
+                    fixLeftEdge: true,
+                    fixRightEdge: true,
+                },
+                rightPriceScale: {
+                    borderColor: '#30363d',
+                    scaleMargins: { top: 0.05, bottom: 0.25 },
+                },
+                handleScroll: { vertTouchDrag: false },
+            });
+
+            candleSeries = chart.addCandlestickSeries({
+                upColor: '#26a69a',
+                downColor: '#ef5350',
+                borderUpColor: '#26a69a',
+                borderDownColor: '#ef5350',
+                wickUpColor: '#26a69a',
+                wickDownColor: '#ef5350',
+                priceFormat: {
+                    type: 'price',
+                    precision: 2,
+                    minMove: 0.01,
+                },
+            });
+
+            volumeSeries = chart.addHistogramSeries({
+                priceFormat: { type: 'volume' },
+                priceScaleId: 'volume',
+                priceLineVisible: false,
+                lastValueVisible: false,
+            });
+
+            chart.priceScale('volume').applyOptions({
+                scaleMargins: { top: 0.78, bottom: 0 },
+                visible: false,
+            });
+
+            // Resize
+            const ro = new ResizeObserver(() => {
+                chart.applyOptions({ width: $chartEl.clientWidth });
+            });
+            ro.observe($chartEl);
+
+            return { chart, candleSeries, volumeSeries };
+        }
+
+        function updateChart(data) {
+            if (!chart) initChart();
+            const { meta } = data;
+
+            candleSeries.setData(data.candles);
+            volumeSeries.setData(data.volumes);
+
+            // Update price info
+            const last = meta.lastPrice;
+            const chg = meta.change;
+            const pct = meta.changePct;
+            const isUp = chg >= 0;
+
+            $priceCurrent.textContent = fmtNum(last);
+            $priceCurrent.style.color = isUp ? 'var(--green)' : 'var(--red)';
+
+            $priceChange.className = 'price-change ' + (isUp ? 'up' : 'down');
+            $priceChange.innerHTML =
+                `<span class="icon">${isUp ? '▲' : '▼'}</span> ${fmtNum(Math.abs(chg))} (${isUp ? '+' : ''}${pct.toFixed(2)}%)`;
+
+            $pdPrev.textContent = fmtNum(meta.previousClose);
+            $pdOpen.textContent = fmtNum(meta.regularMarketOpen);
+            $pdHigh.textContent = fmtNum(meta.dayHigh);
+            $pdLow.textContent = fmtNum(meta.dayLow);
+            $pdVol.textContent = fmtVolume(meta.regularMarketVolume);
+            $pdCurr.textContent = meta.currency;
+
+            // Fit visible range
+            chart.timeScale().fitContent();
+        }
+
+        // ============================================================
+        //  LOAD STOCK
+        // ============================================================
+        async function loadStock(symbol, tf) {
+            tf = tf || currentTf;
+            currentSymbol = symbol;
+            currentTf = tf;
+
+            $symbolInput.value = symbol;
+            $errorMsg.style.display = 'none';
+            $loading.classList.remove('hidden');
+
+            // Update preset active state
+            document.querySelectorAll('.preset-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.symbol === symbol);
+            });
+
+            try {
+                const raw = await fetchChart(symbol, tf);
+                const data = parseData(raw);
+
+                if (!chart) initChart();
+                updateChart(data);
+
+                // Mark active timeframe
+                $tfBtns.forEach(b => b.classList.toggle('active', b.dataset.tf === tf));
+
+            } catch (err) {
+                console.error(err);
+                $errorMsg.textContent = '⚠️ ' + err.message;
+                $errorMsg.style.display = 'block';
+            } finally {
+                $loading.classList.add('hidden');
+            }
+        }
+
+        // ============================================================
+        //  EVENT BINDINGS
+        // ============================================================
+
+        // Search
+        $searchBtn.addEventListener('click', () => {
+            const val = $symbolInput.value.trim();
+            if (val) loadStock(val);
+        });
+
+        $symbolInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const val = $symbolInput.value.trim();
+                if (val) loadStock(val);
+            }
+        });
+
+        // Timeframes
+        $tfBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tf = btn.dataset.tf;
+                if (tf === currentTf && currentSymbol) return;
+                loadStock(currentSymbol, tf);
+            });
+        });
+
+        // ============================================================
+        //  AUTO INIT: load default stock
+        // ============================================================
+        initChart();
+        loadStock(currentSymbol, currentTf);
+    </script>
+
+</body>
+</html>

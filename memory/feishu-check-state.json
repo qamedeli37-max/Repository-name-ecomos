@@ -1,0 +1,11 @@
+{
+  "last_position": 10,
+  "chat_id": "oc_4d5b5b8f2c6027ff1d64a78e915870ac",
+  "user_open_id": "ou_fdff8209d77a0795b5d9b5b0e97d9241",
+  "last_check": "2026-06-19 15:22 CST",
+  "error": "Bot not in chat (error 230002). Needs manual re-add to group.",
+  "error_count": 14,
+  "first_error": "2026-06-19 14:56 CST",
+  "status": "❌ 已停止 - 定时任务已移除",
+  "note": "Bot 不在群里 oc_4d5b5b8f2c6027ff1d64a78e915870ac，需要桐希手动将 Bot 重新拉入群聊才能恢复。"
+}
