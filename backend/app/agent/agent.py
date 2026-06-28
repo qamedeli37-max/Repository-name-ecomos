@@ -21,23 +21,19 @@ class Agent:
         memory = self.state_manager.get_memory()
 
         replan_count = 0
+        last_critic_result = None
+
         while state.status != "done" and replan_count < MAX_REPLANS:
             plan_data = self.planner.plan(goal, self.tools, memory)
-            state.plan = plan_data.get("plan", [])
+            plans = plan_data.get("plans", [])
+
+            critic_result = self.critic.evaluate(goal, plans, memory)
+            last_critic_result = critic_result
+
+            selected_id = critic_result.selected_plan
+            selected_plan = critic_result.plan_details.get(selected_id, plans[0])
+            state.plan = selected_plan.get("steps", [])
             self.state_manager.save(state)
-
-            critic_result = self.critic.evaluate(goal, state.plan, memory)
-
-            if not critic_result.approved and replan_count < MAX_REPLANS - 1:
-                replan_count += 1
-                refined = self.planner.refine_plan(
-                    goal, self.tools,
-                    {"failed_step": {}, "error": f"critic issues: {critic_result.issues}"},
-                    memory
-                )
-                state.plan = refined.get("plan", [])
-                self.state_manager.save(state)
-                continue
 
             exec_result = self.executor.execute_plan(state.plan)
 
@@ -47,7 +43,7 @@ class Agent:
             if exec_result.requires_replan and replan_count < MAX_REPLANS - 1:
                 replan_count += 1
                 refined = self.planner.refine_plan(goal, self.tools, exec_result.feedback, memory)
-                state.plan = refined.get("plan", [])
+                state.plan = []
                 self.state_manager.save(state)
             else:
                 break
@@ -55,15 +51,19 @@ class Agent:
         success = not any(s.get("status") == "failed" for s in state.history)
         self.state_manager.mark_done(state, success)
 
-        return {
+        response = {
             "execution_id": state.execution_id,
             "goal": state.goal,
             "status": state.status,
             "steps": state.history,
             "replans": replan_count,
-            "critic_score": critic_result.score if 'critic_result' in dir() else None,
             "memory_summary": memory.summary()
         }
+
+        if last_critic_result:
+            response["critic"] = last_critic_result.to_dict()
+
+        return response
 
     def resume(self, execution_id: str):
         state = self.state_manager.get(execution_id)

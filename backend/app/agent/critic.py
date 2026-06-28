@@ -6,16 +6,15 @@ load_dotenv()
 
 
 class CriticResult:
-    def __init__(self, score: float, issues: list[str], approved: bool):
-        self.score = score
-        self.issues = issues
-        self.approved = approved
+    def __init__(self, selected_plan: str, score_map: dict, plan_details: dict):
+        self.selected_plan = selected_plan
+        self.score_map = score_map
+        self.plan_details = plan_details
 
     def to_dict(self):
         return {
-            "score": self.score,
-            "issues": self.issues,
-            "approved": self.approved
+            "selected_plan": self.selected_plan,
+            "score_map": self.score_map
         }
 
 
@@ -31,80 +30,92 @@ class CriticAgent:
         else:
             self.client = None
 
-    def evaluate(self, goal: dict, plan: list[dict], memory=None) -> CriticResult:
+    def evaluate(self, goal: dict, plans: list[dict], memory=None) -> CriticResult:
         if self.client:
-            return self._llm_evaluate(goal, plan, memory)
-        return self._rule_evaluate(goal, plan, memory)
+            return self._llm_evaluate(goal, plans, memory)
+        return self._rule_evaluate(goal, plans, memory)
 
-    def _llm_evaluate(self, goal: dict, plan: list[dict], memory=None):
+    def _llm_evaluate(self, goal: dict, plans: list[dict], memory=None):
         memory_context = self._build_memory_context(goal, memory)
+        plans_json = json.dumps(plans, indent=2)
 
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {
                     "role": "system",
-                    "content": f"""You are a plan critic. Evaluate if the plan achieves the goal.
+                    "content": f"""You are a plan critic. Evaluate and select the best plan.
 
 Return ONLY valid JSON:
 {{
-    "score": 0.0-1.0,
-    "issues": ["issue1", "issue2"],
-    "approved": true/false
+    "selected_plan": "plan_id",
+    "score_map": {{"a": 0.6, "b": 0.9}},
+    "reasoning": "why selected"
 }}
 
 Rules:
-- score >= 0.7 and no critical issues → approved
-- score < 0.7 or critical issues → not approved
+- Choose the plan most likely to succeed
+- Consider past failures
 
 {memory_context}"""
                 },
                 {
                     "role": "user",
-                    "content": f"Goal: {json.dumps(goal)}\nPlan: {json.dumps(plan)}"
+                    "content": f"Goal: {json.dumps(goal)}\nPlans: {plans_json}"
                 }
             ]
         )
         content = response.choices[0].message.content
         data = json.loads(content)
+
+        selected_id = data.get("selected_plan", plans[0].get("id", "a"))
+        score_map = data.get("score_map", {})
+
+        plan_details = {p["id"]: p for p in plans}
+
         return CriticResult(
-            score=data.get("score", 0),
-            issues=data.get("issues", []),
-            approved=data.get("approved", False)
+            selected_plan=selected_id,
+            score_map=score_map,
+            plan_details=plan_details
         )
 
-    def _rule_evaluate(self, goal: dict, plan: list[dict], memory=None):
-        issues = []
-        score = 1.0
-
-        if not plan:
-            issues.append("empty plan")
-            score = 0.0
-
+    def _rule_evaluate(self, goal: dict, plans: list[dict], memory=None):
+        score_map = {}
         goal_text = goal.get("goal", "").lower()
-        plan_tools = [s.get("tool") for s in plan]
 
-        if "create" in goal_text or "创建" in goal_text:
-            if "product.create" not in plan_tools:
-                issues.append("goal requires create but plan missing product.create")
-                score -= 0.3
+        for plan in plans:
+            score = 1.0
+            plan_id = plan.get("id", "a")
+            steps = plan.get("steps", [])
+            plan_tools = [s.get("tool") for s in steps]
 
-        if "list" in goal_text or "show" in goal_text or "查看" in goal_text:
-            if "product.list" not in plan_tools and "product.get" not in plan_tools:
-                issues.append("goal requires list/get but plan missing")
-                score -= 0.3
+            if not steps:
+                score = 0.0
 
-        if memory:
-            failed = memory.get_failed_patterns(goal_text)
-            for f in failed:
-                if f.get("tool") in plan_tools:
-                    issues.append(f"plan includes previously failed tool: {f.get('tool')}")
-                    score -= 0.2
+            if "create" in goal_text or "创建" in goal_text:
+                if "product.create" not in plan_tools:
+                    score -= 0.3
 
-        score = max(0.0, score)
-        approved = score >= 0.7 and not any("critical" in i.lower() for i in issues)
+            if "list" in goal_text or "show" in goal_text or "查看" in goal_text:
+                if "product.list" not in plan_tools and "product.get" not in plan_tools:
+                    score -= 0.3
 
-        return CriticResult(score=score, issues=issues, approved=approved)
+            if memory:
+                failed = memory.get_failed_patterns(goal_text)
+                for f in failed:
+                    if f.get("tool") in plan_tools:
+                        score -= 0.2
+
+            score_map[plan_id] = max(0.0, score)
+
+        selected_id = max(score_map, key=score_map.get)
+        plan_details = {p["id"]: p for p in plans}
+
+        return CriticResult(
+            selected_plan=selected_id,
+            score_map=score_map,
+            plan_details=plan_details
+        )
 
     def _build_memory_context(self, goal: dict, memory) -> str:
         if not memory:
