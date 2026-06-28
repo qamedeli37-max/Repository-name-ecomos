@@ -1,14 +1,17 @@
 from app.agent.planner import PlannerAgent
+from app.agent.critic import CriticAgent
 from app.agent.executor import ExecutorAgent
 from app.agent.state_manager import StateManager
 
 MAX_REPLANS = 3
+MIN_SCORE = 0.7
 
 
 class Agent:
     def __init__(self, tools: dict):
         self.tools = tools
         self.planner = PlannerAgent()
+        self.critic = CriticAgent()
         self.executor = ExecutorAgent(tools)
         self.state_manager = StateManager()
 
@@ -22,6 +25,19 @@ class Agent:
             plan_data = self.planner.plan(goal, self.tools, memory)
             state.plan = plan_data.get("plan", [])
             self.state_manager.save(state)
+
+            critic_result = self.critic.evaluate(goal, state.plan, memory)
+
+            if not critic_result.approved and replan_count < MAX_REPLANS - 1:
+                replan_count += 1
+                refined = self.planner.refine_plan(
+                    goal, self.tools,
+                    {"failed_step": {}, "error": f"critic issues: {critic_result.issues}"},
+                    memory
+                )
+                state.plan = refined.get("plan", [])
+                self.state_manager.save(state)
+                continue
 
             exec_result = self.executor.execute_plan(state.plan)
 
@@ -45,6 +61,7 @@ class Agent:
             "status": state.status,
             "steps": state.history,
             "replans": replan_count,
+            "critic_score": critic_result.score if 'critic_result' in dir() else None,
             "memory_summary": memory.summary()
         }
 
