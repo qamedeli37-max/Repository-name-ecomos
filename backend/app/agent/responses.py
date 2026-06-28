@@ -30,6 +30,7 @@ class AgentResponse(BaseModel):
     steps: list[ToolResult]
     meta: AgentMeta
     error: Optional[ErrorDetail] = None
+    tenant_id: Optional[str] = None
 
 
 class ErrorResponse(BaseModel):
@@ -96,7 +97,8 @@ def format_agent_response(raw: dict) -> AgentResponse:
         result=result_text,
         steps=formatted_steps,
         meta=meta,
-        error=error
+        error=error,
+        tenant_id=raw.get("tenant_id")
     )
 
 

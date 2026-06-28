@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Literal
+from typing import Literal, Optional
 
 
 class ExecutionState(BaseModel):
@@ -9,6 +9,7 @@ class ExecutionState(BaseModel):
     status: Literal["running", "paused", "done"] = "running"
     current_step: int = 0
     history: list[dict] = []
+    tenant_id: Optional[str] = None
 
 
 class StateStore:

@@ -22,11 +22,11 @@ class Agent:
         self.executor = ExecutorAgent(tools)
         self.state_manager = StateManager()
 
-    def run(self, user_input: str):
+    def run(self, user_input: str, tenant_id: str = None):
         goal = self._parse_goal(user_input)
         goal_type = self._detect_goal_type(goal.get("goal", ""))
-        state = self.state_manager.create(goal=goal.get("goal", ""), plan=[])
-        memory = self.state_manager.get_memory()
+        state = self.state_manager.create(goal=goal.get("goal", ""), plan=[], tenant_id=tenant_id)
+        memory = self.state_manager.get_memory(tenant_id)
         strategy = self.strategy_registry.get_current()
         profile = self.profile_manager.get_current()
         cognition_config = get_cognition_config(profile.id)
@@ -66,30 +66,31 @@ class Agent:
             selected_id = critic_result.selected_plan
             selected_plan = critic_result.plan_details.get(selected_id, plans[0])
             state.plan = selected_plan.get("steps", [])
-            self.state_manager.save(state)
+            self.state_manager.save(state, tenant_id)
 
             exec_result = self.executor.execute_plan(state.plan, profile, cognition_config)
 
             for step_result in exec_result.steps:
-                self.state_manager.append_result(state, step_result)
+                self.state_manager.append_result(state, step_result, tenant_id)
                 if step_result.get("status") == "failed":
                     self.state_manager.record_failure(
                         step=step_result.get("tool", "unknown"),
                         error=step_result.get("error", "unknown"),
                         goal_type=goal_type,
-                        context={"execution_id": state.execution_id, "strategy": strategy.id, "profile": profile.id, "cognition": cognition_config.level}
+                        context={"execution_id": state.execution_id, "strategy": strategy.id, "profile": profile.id, "cognition": cognition_config.level},
+                        tenant_id=tenant_id
                     )
 
             if exec_result.requires_replan and replan_count < max_replans - 1:
                 replan_count += 1
                 refined = self.planner.refine_plan(goal, self.tools, exec_result.feedback, memory, strategy, meta_state, profile, cognition_config)
                 state.plan = []
-                self.state_manager.save(state)
+                self.state_manager.save(state, tenant_id)
             else:
                 break
 
         success = not any(s.get("status") == "failed" for s in state.history)
-        self.state_manager.mark_done(state, success)
+        self.state_manager.mark_done(state, success, tenant_id)
 
         score = last_critic_result.score_map.get(selected_id, 0) if last_critic_result else 0
         self.state_manager.record_plan_score(
@@ -97,7 +98,8 @@ class Agent:
             plan_steps=state.plan,
             score=score,
             success=success,
-            goal_type=goal_type
+            goal_type=goal_type,
+            tenant_id=tenant_id
         )
 
         self.meta_manager.record_execution(
@@ -124,7 +126,8 @@ class Agent:
                 "verification_level": cognition_config.verification_level
             },
             "meta_state": self.meta_manager.get_state().model_dump(),
-            "memory_summary": memory.summary()
+            "memory_summary": memory.summary(),
+            "tenant_id": tenant_id
         }
 
         if last_critic_result:
@@ -132,22 +135,22 @@ class Agent:
 
         return response
 
-    def resume(self, execution_id: str):
-        state = self.state_manager.get(execution_id)
+    def resume(self, execution_id: str, tenant_id: str = None):
+        state = self.state_manager.get(execution_id, tenant_id)
         if not state:
             return {"error": "execution not found"}
         if state.status == "done":
             return {"error": "execution already done"}
         state.status = "running"
-        return self.execute_loop(state)
+        return self.execute_loop(state, tenant_id)
 
-    def execute_loop(self, state):
+    def execute_loop(self, state, tenant_id: str = None):
         while state.status != "done" and state.current_step < len(state.plan):
             step = state.plan[state.current_step]
             result = self.executor.execute_step(step)
-            self.state_manager.append_result(state, result)
+            self.state_manager.append_result(state, result, tenant_id)
 
-        self.state_manager.mark_done(state)
+        self.state_manager.mark_done(state, True, tenant_id)
 
         return {
             "execution_id": state.execution_id,
