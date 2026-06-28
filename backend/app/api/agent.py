@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.services.product_service import ProductService
 from app.repositories.product_repository import ProductRepository
 from app.tools.registry import build_tools
-from app.agent.agent import Agent, store
+from app.agent.agent import Agent
 from app.db.database import SessionLocal
 
 router = APIRouter(tags=["Agent"])
