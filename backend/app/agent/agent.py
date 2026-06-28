@@ -17,6 +17,7 @@ class Agent:
 
     def run(self, user_input: str):
         goal = self._parse_goal(user_input)
+        goal_type = self._detect_goal_type(goal.get("goal", ""))
         state = self.state_manager.create(goal=goal.get("goal", ""), plan=[])
         memory = self.state_manager.get_memory()
 
@@ -50,6 +51,15 @@ class Agent:
 
         success = not any(s.get("status") == "failed" for s in state.history)
         self.state_manager.mark_done(state, success)
+
+        score = last_critic_result.score_map.get(selected_id, 0) if last_critic_result else 0
+        self.state_manager.record_plan_score(
+            plan_id=selected_id,
+            plan_steps=state.plan,
+            score=score,
+            success=success,
+            goal_type=goal_type
+        )
 
         response = {
             "execution_id": state.execution_id,
@@ -101,3 +111,13 @@ class Agent:
             "constraints": [],
             "context": {}
         }
+
+    def _detect_goal_type(self, goal: str) -> str:
+        goal_lower = goal.lower()
+        if "create" in goal_lower or "创建" in goal_lower:
+            return "product_create"
+        if "update" in goal_lower or "修改" in goal_lower:
+            return "product_update"
+        if "list" in goal_lower or "show" in goal_lower or "查看" in goal_lower:
+            return "product_list"
+        return "unknown"

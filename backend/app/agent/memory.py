@@ -8,12 +8,24 @@ class ExecutionRecord(BaseModel):
     successful_plan: list[dict] = []
 
 
+class PlanScoreRecord(BaseModel):
+    plan_id: str
+    plan_steps: list[dict]
+    score: float
+    result: str  # success/failed
+    goal_type: str
+
+
 class ExecutionMemory:
     def __init__(self):
         self.records: list[ExecutionRecord] = []
+        self.plan_scores: list[PlanScoreRecord] = []
 
     def add(self, record: ExecutionRecord):
         self.records.append(record)
+
+    def add_plan_score(self, record: PlanScoreRecord):
+        self.plan_scores.append(record)
 
     def get_similar(self, goal: str) -> list[ExecutionRecord]:
         goal_lower = goal.lower()
@@ -29,11 +41,28 @@ class ExecutionMemory:
                 failures.extend(r.failed_steps)
         return failures
 
+    def get_high_score_plans(self, min_score: float = 0.8, goal_type: str = None) -> list[PlanScoreRecord]:
+        records = self.plan_scores
+        if goal_type:
+            records = [r for r in records if r.goal_type == goal_type]
+        return [r for r in records if r.score >= min_score]
+
+    def get_plan_stats(self) -> dict:
+        if not self.plan_scores:
+            return {"total": 0, "avg_score": 0, "high_score_count": 0}
+        scores = [r.score for r in self.plan_scores]
+        return {
+            "total": len(scores),
+            "avg_score": sum(scores) / len(scores),
+            "high_score_count": sum(1 for s in scores if s >= 0.8)
+        }
+
     def summary(self) -> dict:
         total = len(self.records)
         success = sum(1 for r in self.records if r.success)
         return {
             "total_executions": total,
             "successful": success,
-            "failed": total - success
+            "failed": total - success,
+            "plan_stats": self.get_plan_stats()
         }

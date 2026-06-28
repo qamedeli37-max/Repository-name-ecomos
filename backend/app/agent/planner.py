@@ -39,6 +39,8 @@ class PlannerAgent:
                     "role": "system",
                     "content": f"""You are a task planner. Generate 2-3 different plans.
 
+Use high-score patterns as inspiration when available.
+
 Return ONLY valid JSON:
 {{
     "plans": [
@@ -72,6 +74,7 @@ Available tools:
                     "content": f"""You are a task planner. A previous plan failed.
 
 Generate 2-3 NEW plans that avoid the error.
+Use high-score patterns as inspiration when available.
 
 Return ONLY valid JSON:
 {{
@@ -101,18 +104,33 @@ Available tools:
         if not memory:
             return ""
         goal_text = goal.get("goal", "")
-        successful = memory.get_successful_plans(goal_text)
-        failed = memory.get_failed_patterns(goal_text)
         parts = []
+
+        successful = memory.get_successful_plans(goal_text)
         if successful:
             parts.append(f"Past successful plans: {json.dumps(successful[:2])}")
+
+        failed = memory.get_failed_patterns(goal_text)
         if failed:
             parts.append(f"Past failed steps to avoid: {json.dumps(failed[:2])}")
+
+        high_score = memory.get_high_score_plans(min_score=0.8)
+        if high_score:
+            patterns = [{"tools": [s["tool"] for s in r.plan_steps], "score": r.score} for r in high_score[:3]]
+            parts.append(f"High-score plan patterns to emulate: {json.dumps(patterns)}")
+
         return "\n".join(parts) if parts else ""
 
     def _rule_plan(self, goal: dict, memory=None):
         text = goal.get("goal", "").lower()
         steps = []
+
+        if memory:
+            high_score = memory.get_high_score_plans(min_score=0.8)
+            if high_score:
+                best = high_score[0]
+                return [dict(s) for s in best.plan_steps]
+
         if "create" in text or "创建" in text:
             steps.append({"tool": "product.create", "args": self._parse_product_create(text)})
         if "update" in text or "修改" in text:

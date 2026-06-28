@@ -1,6 +1,6 @@
 from uuid import uuid4
 from app.agent.state import ExecutionState, StateStore
-from app.agent.memory import ExecutionMemory, ExecutionRecord
+from app.agent.memory import ExecutionMemory, ExecutionRecord, PlanScoreRecord
 
 
 class StateManager:
@@ -40,6 +40,16 @@ class StateManager:
             successful_plan=successful_plan
         )
         self.memory.add(record)
+
+    def record_plan_score(self, plan_id: str, plan_steps: list[dict], score: float, success: bool, goal_type: str):
+        record = PlanScoreRecord(
+            plan_id=plan_id,
+            plan_steps=plan_steps,
+            score=score,
+            result="success" if success else "failed",
+            goal_type=goal_type
+        )
+        self.memory.add_plan_score(record)
 
     def append_result(self, state: ExecutionState, result: dict):
         state.history.append(result)

@@ -55,6 +55,7 @@ Return ONLY valid JSON:
 
 Rules:
 - Choose the plan most likely to succeed
+- Consider past high-score patterns
 - Consider past failures
 
 {memory_context}"""
@@ -70,7 +71,6 @@ Rules:
 
         selected_id = data.get("selected_plan", plans[0].get("id", "a"))
         score_map = data.get("score_map", {})
-
         plan_details = {p["id"]: p for p in plans}
 
         return CriticResult(
@@ -82,6 +82,12 @@ Rules:
     def _rule_evaluate(self, goal: dict, plans: list[dict], memory=None):
         score_map = {}
         goal_text = goal.get("goal", "").lower()
+
+        high_score_plans = memory.get_high_score_plans() if memory else []
+        high_score_tools = set()
+        for record in high_score_plans:
+            for step in record.plan_steps:
+                high_score_tools.add(step.get("tool", ""))
 
         for plan in plans:
             score = 1.0
@@ -106,7 +112,10 @@ Rules:
                     if f.get("tool") in plan_tools:
                         score -= 0.2
 
-            score_map[plan_id] = max(0.0, score)
+            if high_score_tools and any(t in high_score_tools for t in plan_tools):
+                score += 0.1
+
+            score_map[plan_id] = min(1.0, max(0.0, score))
 
         selected_id = max(score_map, key=score_map.get)
         plan_details = {p["id"]: p for p in plans}
@@ -121,7 +130,15 @@ Rules:
         if not memory:
             return ""
         goal_text = goal.get("goal", "")
+        parts = []
+
         failed = memory.get_failed_patterns(goal_text)
         if failed:
-            return f"Past failures to avoid: {json.dumps(failed[:3])}"
-        return ""
+            parts.append(f"Past failures to avoid: {json.dumps(failed[:3])}")
+
+        high_score = memory.get_high_score_plans(min_score=0.8)
+        if high_score:
+            patterns = [{"tools": [s["tool"] for s in r.plan_steps], "score": r.score} for r in high_score[:3]]
+            parts.append(f"High-score plan patterns: {json.dumps(patterns)}")
+
+        return "\n".join(parts) if parts else ""
