@@ -16,16 +16,28 @@ class PlanScoreRecord(BaseModel):
     goal_type: str
 
 
+class FailureRecord(BaseModel):
+    step: str
+    error_type: str
+    root_cause: str
+    goal_type: str
+    context: dict = {}
+
+
 class ExecutionMemory:
     def __init__(self):
         self.records: list[ExecutionRecord] = []
         self.plan_scores: list[PlanScoreRecord] = []
+        self.failures: list[FailureRecord] = []
 
     def add(self, record: ExecutionRecord):
         self.records.append(record)
 
     def add_plan_score(self, record: PlanScoreRecord):
         self.plan_scores.append(record)
+
+    def add_failure(self, record: FailureRecord):
+        self.failures.append(record)
 
     def get_similar(self, goal: str) -> list[ExecutionRecord]:
         goal_lower = goal.lower()
@@ -40,6 +52,22 @@ class ExecutionMemory:
             if not r.success:
                 failures.extend(r.failed_steps)
         return failures
+
+    def get_failures_by_type(self, error_type: str = None) -> list[FailureRecord]:
+        if error_type:
+            return [f for f in self.failures if f.error_type == error_type]
+        return self.failures
+
+    def get_failure_patterns(self) -> dict:
+        patterns = {}
+        for f in self.failures:
+            key = f"{f.step}:{f.error_type}"
+            if key not in patterns:
+                patterns[key] = {"step": f.step, "error_type": f.error_type, "count": 0, "root_causes": []}
+            patterns[key]["count"] += 1
+            if f.root_cause not in patterns[key]["root_causes"]:
+                patterns[key]["root_causes"].append(f.root_cause)
+        return patterns
 
     def get_high_score_plans(self, min_score: float = 0.8, goal_type: str = None) -> list[PlanScoreRecord]:
         records = self.plan_scores
@@ -64,5 +92,6 @@ class ExecutionMemory:
             "total_executions": total,
             "successful": success,
             "failed": total - success,
-            "plan_stats": self.get_plan_stats()
+            "plan_stats": self.get_plan_stats(),
+            "failure_patterns": len(self.get_failure_patterns())
         }

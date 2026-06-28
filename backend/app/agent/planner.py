@@ -39,7 +39,8 @@ class PlannerAgent:
                     "role": "system",
                     "content": f"""You are a task planner. Generate 2-3 different plans.
 
-Use high-score patterns as inspiration when available.
+CRITICAL: Avoid all known failure patterns listed in context.
+Use high-score patterns as inspiration.
 
 Return ONLY valid JSON:
 {{
@@ -73,8 +74,9 @@ Available tools:
                     "role": "system",
                     "content": f"""You are a task planner. A previous plan failed.
 
+CRITICAL: Avoid all known failure patterns listed in context.
 Generate 2-3 NEW plans that avoid the error.
-Use high-score patterns as inspiration when available.
+Use high-score patterns as inspiration.
 
 Return ONLY valid JSON:
 {{
@@ -119,20 +121,34 @@ Available tools:
             patterns = [{"tools": [s["tool"] for s in r.plan_steps], "score": r.score} for r in high_score[:3]]
             parts.append(f"High-score plan patterns to emulate: {json.dumps(patterns)}")
 
+        failure_patterns = memory.get_failure_patterns()
+        if failure_patterns:
+            avoid_list = [{"step": v["step"], "error": v["error_type"], "count": v["count"]} for v in failure_patterns.values()]
+            parts.append(f"AVOID these failure patterns: {json.dumps(avoid_list)}")
+
         return "\n".join(parts) if parts else ""
 
     def _rule_plan(self, goal: dict, memory=None):
         text = goal.get("goal", "").lower()
         steps = []
+        avoid_tools = set()
 
         if memory:
+            failure_patterns = memory.get_failure_patterns()
             high_score = memory.get_high_score_plans(min_score=0.8)
+
             if high_score:
                 best = high_score[0]
                 return [dict(s) for s in best.plan_steps]
 
+            if failure_patterns:
+                for key, pattern in failure_patterns.items():
+                    if pattern["count"] >= 2:
+                        avoid_tools.add(pattern["step"])
+
         if "create" in text or "创建" in text:
-            steps.append({"tool": "product.create", "args": self._parse_product_create(text)})
+            if "product.create" not in avoid_tools:
+                steps.append({"tool": "product.create", "args": self._parse_product_create(text)})
         if "update" in text or "修改" in text:
             steps.append({"tool": "product.update", "args": self._parse_product_update(text)})
         if "list" in text or "show all" in text or "查看所有" in text:

@@ -1,6 +1,6 @@
 from uuid import uuid4
 from app.agent.state import ExecutionState, StateStore
-from app.agent.memory import ExecutionMemory, ExecutionRecord, PlanScoreRecord
+from app.agent.memory import ExecutionMemory, ExecutionRecord, PlanScoreRecord, FailureRecord
 
 
 class StateManager:
@@ -50,6 +50,46 @@ class StateManager:
             goal_type=goal_type
         )
         self.memory.add_plan_score(record)
+
+    def record_failure(self, step: str, error: str, goal_type: str, context: dict = None):
+        error_type = self._classify_error(error)
+        root_cause = self._infer_root_cause(step, error, error_type)
+
+        record = FailureRecord(
+            step=step,
+            error_type=error_type,
+            root_cause=root_cause,
+            goal_type=goal_type,
+            context=context or {}
+        )
+        self.memory.add_failure(record)
+
+    def _classify_error(self, error: str) -> str:
+        error_lower = error.lower()
+        if "not found" in error_lower or "不存在" in error_lower:
+            return "not_found"
+        if "validation" in error_lower or "required" in error_lower:
+            return "validation_error"
+        if "timeout" in error_lower:
+            return "timeout"
+        if "connection" in error_lower:
+            return "connection_error"
+        if "permission" in error_lower or "denied" in error_lower:
+            return "permission_error"
+        return "unknown_error"
+
+    def _infer_root_cause(self, step: str, error: str, error_type: str) -> str:
+        if error_type == "not_found":
+            return "resource_does_not_exist_or_invalid_id"
+        if error_type == "validation_error":
+            return "missing_or_invalid_required_field"
+        if error_type == "timeout":
+            return "operation_took_too_long"
+        if error_type == "connection_error":
+            return "service_unavailable"
+        if error_type == "permission_error":
+            return "insufficient_access_rights"
+        return f"error_in_{step}"
 
     def append_result(self, state: ExecutionState, result: dict):
         state.history.append(result)

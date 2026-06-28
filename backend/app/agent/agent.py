@@ -40,6 +40,13 @@ class Agent:
 
             for step_result in exec_result.steps:
                 self.state_manager.append_result(state, step_result)
+                if step_result.get("status") == "failed":
+                    self.state_manager.record_failure(
+                        step=step_result.get("tool", "unknown"),
+                        error=step_result.get("error", "unknown"),
+                        goal_type=goal_type,
+                        context={"execution_id": state.execution_id}
+                    )
 
             if exec_result.requires_replan and replan_count < MAX_REPLANS - 1:
                 replan_count += 1
