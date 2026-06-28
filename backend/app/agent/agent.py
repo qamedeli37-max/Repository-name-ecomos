@@ -4,8 +4,9 @@ from app.agent.executor import ExecutorAgent
 from app.agent.state_manager import StateManager
 from app.agent.strategy import StrategyRegistry
 from app.agent.meta import MetaStateManager
+from app.agent.profile import ProfileManager
 
-MAX_REPLANS = 3
+MAX_REPLANS_BASE = 3
 MIN_SCORE = 0.7
 
 
@@ -14,6 +15,7 @@ class Agent:
         self.tools = tools
         self.strategy_registry = StrategyRegistry()
         self.meta_manager = MetaStateManager()
+        self.profile_manager = ProfileManager()
         self.planner = PlannerAgent(strategy_registry=self.strategy_registry)
         self.critic = CriticAgent()
         self.executor = ExecutorAgent(tools)
@@ -25,16 +27,18 @@ class Agent:
         state = self.state_manager.create(goal=goal.get("goal", ""), plan=[])
         memory = self.state_manager.get_memory()
         strategy = self.strategy_registry.get_current()
+        profile = self.profile_manager.get_current()
         meta_state = self.meta_manager.get_state()
 
+        max_replans = profile.max_replans
         replan_count = 0
         last_critic_result = None
 
-        while state.status != "done" and replan_count < MAX_REPLANS:
-            plan_data = self.planner.plan(goal, self.tools, memory, strategy, meta_state)
+        while state.status != "done" and replan_count < max_replans:
+            plan_data = self.planner.plan(goal, self.tools, memory, strategy, meta_state, profile)
             plans = plan_data.get("plans", [])
 
-            critic_result = self.critic.evaluate(goal, plans, memory, strategy, meta_state)
+            critic_result = self.critic.evaluate(goal, plans, memory, strategy, meta_state, profile)
             last_critic_result = critic_result
 
             if critic_result.suggested_strategy:
@@ -42,17 +46,26 @@ class Agent:
                 new_strategy = self.strategy_registry.switch_to(critic_result.suggested_strategy)
                 if old_id != new_strategy.id:
                     strategy = new_strategy
-                    plan_data = self.planner.plan(goal, self.tools, memory, strategy, meta_state)
-                    plans = plan_data.get("plans", [])
-                    critic_result = self.critic.evaluate(goal, plans, memory, strategy, meta_state)
-                    last_critic_result = critic_result
+
+            if critic_result.suggested_profile:
+                old_pid = self.profile_manager.current_profile_id
+                new_profile = self.profile_manager.switch_to(critic_result.suggested_profile)
+                if old_pid != new_profile.id:
+                    profile = new_profile
+                    max_replans = profile.max_replans
+
+            if critic_result.suggested_strategy or critic_result.suggested_profile:
+                plan_data = self.planner.plan(goal, self.tools, memory, strategy, meta_state, profile)
+                plans = plan_data.get("plans", [])
+                critic_result = self.critic.evaluate(goal, plans, memory, strategy, meta_state, profile)
+                last_critic_result = critic_result
 
             selected_id = critic_result.selected_plan
             selected_plan = critic_result.plan_details.get(selected_id, plans[0])
             state.plan = selected_plan.get("steps", [])
             self.state_manager.save(state)
 
-            exec_result = self.executor.execute_plan(state.plan)
+            exec_result = self.executor.execute_plan(state.plan, profile)
 
             for step_result in exec_result.steps:
                 self.state_manager.append_result(state, step_result)
@@ -61,12 +74,12 @@ class Agent:
                         step=step_result.get("tool", "unknown"),
                         error=step_result.get("error", "unknown"),
                         goal_type=goal_type,
-                        context={"execution_id": state.execution_id, "strategy": strategy.id}
+                        context={"execution_id": state.execution_id, "strategy": strategy.id, "profile": profile.id}
                     )
 
-            if exec_result.requires_replan and replan_count < MAX_REPLANS - 1:
+            if exec_result.requires_replan and replan_count < max_replans - 1:
                 replan_count += 1
-                refined = self.planner.refine_plan(goal, self.tools, exec_result.feedback, memory, strategy, meta_state)
+                refined = self.planner.refine_plan(goal, self.tools, exec_result.feedback, memory, strategy, meta_state, profile)
                 state.plan = []
                 self.state_manager.save(state)
             else:
@@ -100,6 +113,7 @@ class Agent:
             "steps": state.history,
             "replans": replan_count,
             "strategy": strategy.id,
+            "profile": profile.id,
             "meta_state": self.meta_manager.get_state().model_dump(),
             "memory_summary": memory.summary()
         }

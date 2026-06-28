@@ -6,12 +6,13 @@ load_dotenv()
 
 
 class CriticResult:
-    def __init__(self, selected_plan: str, score_map: dict, plan_details: dict, suggestions: list[str] = None, suggested_strategy: str = None, meta_analysis: dict = None):
+    def __init__(self, selected_plan: str, score_map: dict, plan_details: dict, suggestions: list[str] = None, suggested_strategy: str = None, suggested_profile: str = None, meta_analysis: dict = None):
         self.selected_plan = selected_plan
         self.score_map = score_map
         self.plan_details = plan_details
         self.suggestions = suggestions or []
         self.suggested_strategy = suggested_strategy
+        self.suggested_profile = suggested_profile
         self.meta_analysis = meta_analysis or {}
 
     def to_dict(self):
@@ -22,6 +23,8 @@ class CriticResult:
         }
         if self.suggested_strategy:
             result["suggested_strategy"] = self.suggested_strategy
+        if self.suggested_profile:
+            result["suggested_profile"] = self.suggested_profile
         if self.meta_analysis:
             result["meta_analysis"] = self.meta_analysis
         return result
@@ -39,16 +42,17 @@ class CriticAgent:
         else:
             self.client = None
 
-    def evaluate(self, goal: dict, plans: list[dict], memory=None, current_strategy=None, meta_state=None) -> CriticResult:
+    def evaluate(self, goal: dict, plans: list[dict], memory=None, current_strategy=None, meta_state=None, current_profile=None) -> CriticResult:
         if self.client:
-            return self._llm_evaluate(goal, plans, memory, current_strategy, meta_state)
-        return self._rule_evaluate(goal, plans, memory, current_strategy, meta_state)
+            return self._llm_evaluate(goal, plans, memory, current_strategy, meta_state, current_profile)
+        return self._rule_evaluate(goal, plans, memory, current_strategy, meta_state, current_profile)
 
-    def _llm_evaluate(self, goal: dict, plans: list[dict], memory=None, current_strategy=None, meta_state=None):
+    def _llm_evaluate(self, goal: dict, plans: list[dict], memory=None, current_strategy=None, meta_state=None, current_profile=None):
         memory_context = self._build_memory_context(goal, memory)
         plans_json = json.dumps(plans, indent=2)
         strategy_context = f"Current strategy: {current_strategy.name if current_strategy else 'default'}"
         meta_context = self._build_meta_context(meta_state)
+        profile_context = f"Current profile: {current_profile.name if current_profile else 'balanced'}"
 
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",
@@ -60,6 +64,7 @@ class CriticAgent:
 Analyze:
 - Plan quality
 - Strategy effectiveness
+- Profile suitability
 - Execution efficiency
 - System-level performance trends
 
@@ -69,13 +74,16 @@ Return ONLY valid JSON:
     "score_map": {{"a": 0.6, "b": 0.9}},
     "suggestions": ["suggestion1"],
     "suggested_strategy": "strategy_id_or_null",
+    "suggested_profile": "profile_id_or_null",
     "meta_analysis": {{
         "strategy_effective": true,
+        "profile_suitable": true,
         "efficiency_trend": "improving|stable|declining",
         "system_recommendation": "recommendation"
     }}
 }}
 
+{profile_context}
 {strategy_context}
 {meta_context}
 {memory_context}"""
@@ -93,6 +101,7 @@ Return ONLY valid JSON:
         score_map = data.get("score_map", {})
         suggestions = data.get("suggestions", [])
         suggested_strategy = data.get("suggested_strategy")
+        suggested_profile = data.get("suggested_profile")
         meta_analysis = data.get("meta_analysis", {})
         plan_details = {p["id"]: p for p in plans}
 
@@ -102,13 +111,15 @@ Return ONLY valid JSON:
             plan_details=plan_details,
             suggestions=suggestions,
             suggested_strategy=suggested_strategy,
+            suggested_profile=suggested_profile,
             meta_analysis=meta_analysis
         )
 
-    def _rule_evaluate(self, goal: dict, plans: list[dict], memory=None, current_strategy=None, meta_state=None):
+    def _rule_evaluate(self, goal: dict, plans: list[dict], memory=None, current_strategy=None, meta_state=None, current_profile=None):
         score_map = {}
         suggestions = []
         suggested_strategy = None
+        suggested_profile = None
         meta_analysis = {}
         goal_text = goal.get("goal", "").lower()
 
@@ -125,25 +136,31 @@ Return ONLY valid JSON:
                 avoid_steps.add(pattern["step"])
 
         strategy_effective = True
+        profile_suitable = True
         efficiency_trend = "stable"
 
         if meta_state:
             perf = meta_state.performance
             if perf.total_executions >= 3:
-                if perf.success_rate < 0.7:
+                if perf.success_rate < 0.6:
                     strategy_effective = False
+                    profile_suitable = False
                     efficiency_trend = "declining"
-                    suggestions.append(f"success rate {perf.success_rate:.0%} is low - consider strategy change")
-                elif perf.success_rate > 0.9:
-                    efficiency_trend = "improving"
+                    suggested_profile = "safe_executor"
+                    suggestions.append(f"success rate {perf.success_rate:.0%} - switch to safe_executor")
+                elif perf.success_rate > 0.95 and perf.avg_steps <= 2:
+                    suggested_profile = "efficient_executor"
+                    suggestions.append(f"high efficiency - switch to efficient_executor")
 
-                if perf.avg_replans > 1.5:
-                    strategy_effective = False
-                    suggestions.append(f"high avg replans ({perf.avg_replans:.1f}) indicates planning issues")
+                if perf.avg_replans > 2:
+                    suggested_profile = "learning"
+                    suggestions.append(f"high replan rate - switch to learning profile")
 
             if len(failure_patterns) >= 3:
                 suggested_strategy = "safe_mode"
-                suggestions.append("multiple failure patterns - switch to safe_mode")
+                if not suggested_profile:
+                    suggested_profile = "safe_executor"
+                suggestions.append("multiple failures - switch to safe_mode + safe_executor")
 
             strategy_stats = {}
             for entry in meta_state.recent_goals:
@@ -163,8 +180,9 @@ Return ONLY valid JSON:
 
         meta_analysis = {
             "strategy_effective": strategy_effective,
+            "profile_suitable": profile_suitable,
             "efficiency_trend": efficiency_trend,
-            "system_recommendation": "continue current strategy" if strategy_effective else "consider strategy adjustment"
+            "system_recommendation": "continue current settings" if (strategy_effective and profile_suitable) else "adjustment recommended"
         }
 
         for plan in plans:
@@ -184,6 +202,11 @@ Return ONLY valid JSON:
 
                 if len(steps) > current_strategy.max_steps:
                     score -= 0.1
+
+            if current_profile:
+                if current_profile.planner_style == "minimal_steps" and len(steps) > 3:
+                    score -= 0.2
+                    suggestions.append("profile expects minimal steps but plan is long")
 
             if "create" in goal_text or "创建" in goal_text:
                 if "product.create" not in plan_tools:
@@ -217,6 +240,7 @@ Return ONLY valid JSON:
             plan_details=plan_details,
             suggestions=suggestions,
             suggested_strategy=suggested_strategy,
+            suggested_profile=suggested_profile,
             meta_analysis=meta_analysis
         )
 
