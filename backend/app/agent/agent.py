@@ -6,6 +6,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+MAX_RETRY = 2
+
 
 class Agent:
     def __init__(self, tools: dict):
@@ -39,23 +41,60 @@ class Agent:
                     "error": f"tool not found: {step.get('tool')}"
                 })
                 continue
-            try:
-                result = tool.execute(step.get("args", {}))
+
+            attempt = 0
+            success = False
+            last_error = None
+
+            while attempt < MAX_RETRY and not success:
+                try:
+                    result = tool.execute(step.get("args", {}))
+                    success = True
+                except Exception as e:
+                    attempt += 1
+                    last_error = str(e)
+                    if attempt < MAX_RETRY and self.client:
+                        step = self.fix_step(step, last_error)
+
+            if success:
                 results.append({
                     "tool": step.get("tool"),
                     "status": "success",
                     "result": result
                 })
-            except Exception as e:
+            else:
                 results.append({
                     "tool": step.get("tool"),
                     "status": "failed",
-                    "error": str(e)
+                    "error": last_error
                 })
+
         return {
             "execution_id": execution_id,
             "steps": results
         }
+
+    # ========== LLM Fix ==========
+
+    def fix_step(self, step: dict, error: str):
+        response = self.client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": """This tool call failed. Fix the arguments.
+Return ONLY valid JSON with corrected args."""
+                },
+                {
+                    "role": "user",
+                    "content": f"Step: {json.dumps(step)}\nError: {error}"
+                }
+            ]
+        )
+        content = response.choices[0].message.content
+        fixed = json.loads(content)
+        step["args"] = fixed.get("args", step.get("args", {}))
+        return step
 
     # ========== LLM Mode ==========
 
