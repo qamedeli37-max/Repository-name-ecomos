@@ -19,22 +19,32 @@ class PlannerAgent:
         else:
             self.client = None
 
-    def plan(self, goal: dict, tools: dict, memory=None, strategy=None, meta_state=None, profile=None) -> dict:
+    def plan(self, goal: dict, tools: dict, memory=None, strategy=None, meta_state=None, profile=None, cognition=None) -> dict:
         if self.client:
-            return self._llm_plan(goal, tools, memory, strategy, meta_state, profile)
-        return {"plans": [{"id": "a", "steps": self._rule_plan(goal, memory, strategy, meta_state, profile)}]}
+            return self._llm_plan(goal, tools, memory, strategy, meta_state, profile, cognition)
+        return {"plans": [{"id": "a", "steps": self._rule_plan(goal, memory, strategy, meta_state, profile, cognition)}]}
 
-    def refine_plan(self, goal: dict, tools: dict, feedback: dict, memory=None, strategy=None, meta_state=None, profile=None) -> dict:
+    def refine_plan(self, goal: dict, tools: dict, feedback: dict, memory=None, strategy=None, meta_state=None, profile=None, cognition=None) -> dict:
         if self.client:
-            return self._llm_refine(goal, tools, feedback, memory, strategy, meta_state, profile)
-        return {"plans": [{"id": "a", "steps": self._rule_refine(goal, feedback, memory, strategy, meta_state, profile)}]}
+            return self._llm_refine(goal, tools, feedback, memory, strategy, meta_state, profile, cognition)
+        return {"plans": [{"id": "a", "steps": self._rule_refine(goal, feedback, memory, strategy, meta_state, profile, cognition)}]}
 
-    def _llm_plan(self, goal: dict, tools: dict, memory=None, strategy=None, meta_state=None, profile=None):
+    def _llm_plan(self, goal: dict, tools: dict, memory=None, strategy=None, meta_state=None, profile=None, cognition=None):
         tool_list = "\n".join(tools.keys())
         memory_context = self._build_memory_context(goal, memory)
         strategy_context = self._build_strategy_context(strategy)
         meta_context = self._build_meta_context(meta_state)
         profile_context = self._build_profile_context(profile)
+        cog_context = self._build_cognition_context(cognition)
+
+        reasoning_note = ""
+        if cognition:
+            if cognition.level == "shallow":
+                reasoning_note = "Keep reasoning minimal. Generate concise plans only."
+            elif cognition.level == "deep":
+                reasoning_note = "Analyze thoroughly. Consider edge cases, dependencies, and potential issues."
+            else:
+                reasoning_note = "Balance speed and thoroughness."
 
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",
@@ -43,6 +53,7 @@ class PlannerAgent:
                     "role": "system",
                     "content": f"""You are a task planner. Generate 2-3 different plans.
 
+{reasoning_note}
 Follow the active profile's planner style.
 Use meta-state insights to improve planning.
 Follow the active strategy constraints.
@@ -62,6 +73,7 @@ Available tools:
 {tool_list}
 
 {profile_context}
+{cog_context}
 {strategy_context}
 {meta_context}
 {memory_context}"""
@@ -72,12 +84,22 @@ Available tools:
         content = response.choices[0].message.content
         return json.loads(content)
 
-    def _llm_refine(self, goal: dict, tools: dict, feedback: dict, memory=None, strategy=None, meta_state=None, profile=None):
+    def _llm_refine(self, goal: dict, tools: dict, feedback: dict, memory=None, strategy=None, meta_state=None, profile=None, cognition=None):
         tool_list = "\n".join(tools.keys())
         memory_context = self._build_memory_context(goal, memory)
         strategy_context = self._build_strategy_context(strategy)
         meta_context = self._build_meta_context(meta_state)
         profile_context = self._build_profile_context(profile)
+        cog_context = self._build_cognition_context(cognition)
+
+        reasoning_note = ""
+        if cognition:
+            if cognition.level == "shallow":
+                reasoning_note = "Minimal reasoning. Fix the error quickly."
+            elif cognition.level == "deep":
+                reasoning_note = "Deep analysis. Understand root cause before fixing."
+            else:
+                reasoning_note = "Balanced approach to fixing."
 
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",
@@ -86,6 +108,7 @@ Available tools:
                     "role": "system",
                     "content": f"""You are a task planner. A previous plan failed.
 
+{reasoning_note}
 Follow the active profile's planner style.
 Use meta-state insights to improve planning.
 Follow the active strategy constraints.
@@ -106,6 +129,7 @@ Available tools:
 {tool_list}
 
 {profile_context}
+{cog_context}
 {strategy_context}
 {meta_context}
 {memory_context}"""
@@ -188,7 +212,15 @@ Available tools:
             parts.append("Generate comprehensive plans, include verification steps")
         return "\n".join(parts)
 
-    def _rule_plan(self, goal: dict, memory=None, strategy=None, meta_state=None, profile=None):
+    def _build_cognition_context(self, cognition) -> str:
+        if not cognition:
+            return ""
+        parts = [f"Cognition level: {cognition.level}"]
+        parts.append(f"Reasoning steps: {cognition.reasoning_steps}")
+        parts.append(f"Planning depth: {cognition.planning_depth}")
+        return "\n".join(parts)
+
+    def _rule_plan(self, goal: dict, memory=None, strategy=None, meta_state=None, profile=None, cognition=None):
         text = goal.get("goal", "").lower()
         steps = []
         avoid_tools = set()
@@ -249,12 +281,12 @@ Available tools:
 
         return steps
 
-    def _rule_refine(self, goal: dict, feedback: dict, memory=None, strategy=None, meta_state=None, profile=None):
+    def _rule_refine(self, goal: dict, feedback: dict, memory=None, strategy=None, meta_state=None, profile=None, cognition=None):
         failed_step = feedback.get("failed_step", {})
         tool_name = failed_step.get("tool", "")
         if tool_name == "product.create":
             return [{"tool": "product.list", "args": {}}]
-        return self._rule_plan(goal, memory, strategy, meta_state, profile)
+        return self._rule_plan(goal, memory, strategy, meta_state, profile, cognition)
 
     def _parse_product_create(self, text: str):
         price_match = re.search(r'(\d+(?:\.\d+)?)', text)

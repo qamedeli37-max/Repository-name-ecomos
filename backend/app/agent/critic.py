@@ -42,17 +42,18 @@ class CriticAgent:
         else:
             self.client = None
 
-    def evaluate(self, goal: dict, plans: list[dict], memory=None, current_strategy=None, meta_state=None, current_profile=None) -> CriticResult:
+    def evaluate(self, goal: dict, plans: list[dict], memory=None, current_strategy=None, meta_state=None, current_profile=None, cognition=None) -> CriticResult:
         if self.client:
-            return self._llm_evaluate(goal, plans, memory, current_strategy, meta_state, current_profile)
-        return self._rule_evaluate(goal, plans, memory, current_strategy, meta_state, current_profile)
+            return self._llm_evaluate(goal, plans, memory, current_strategy, meta_state, current_profile, cognition)
+        return self._rule_evaluate(goal, plans, memory, current_strategy, meta_state, current_profile, cognition)
 
-    def _llm_evaluate(self, goal: dict, plans: list[dict], memory=None, current_strategy=None, meta_state=None, current_profile=None):
+    def _llm_evaluate(self, goal: dict, plans: list[dict], memory=None, current_strategy=None, meta_state=None, current_profile=None, cognition=None):
         memory_context = self._build_memory_context(goal, memory)
         plans_json = json.dumps(plans, indent=2)
         strategy_context = f"Current strategy: {current_strategy.name if current_strategy else 'default'}"
         meta_context = self._build_meta_context(meta_state)
         profile_context = f"Current profile: {current_profile.name if current_profile else 'balanced'}"
+        cog_context = f"Cognition: level={cognition.level}, reasoning_steps={cognition.reasoning_steps}, planning_depth={cognition.planning_depth}" if cognition else ""
 
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",
@@ -62,7 +63,7 @@ class CriticAgent:
                     "content": f"""You are a Meta-Critic. Evaluate plans AND analyze system performance.
 
 Analyze:
-- Plan quality
+- Plan quality vs cognition depth
 - Strategy effectiveness
 - Profile suitability
 - Execution efficiency
@@ -78,12 +79,14 @@ Return ONLY valid JSON:
     "meta_analysis": {{
         "strategy_effective": true,
         "profile_suitable": true,
+        "cognition_match": true,
         "efficiency_trend": "improving|stable|declining",
         "system_recommendation": "recommendation"
     }}
 }}
 
 {profile_context}
+{cog_context}
 {strategy_context}
 {meta_context}
 {memory_context}"""
@@ -115,7 +118,7 @@ Return ONLY valid JSON:
             meta_analysis=meta_analysis
         )
 
-    def _rule_evaluate(self, goal: dict, plans: list[dict], memory=None, current_strategy=None, meta_state=None, current_profile=None):
+    def _rule_evaluate(self, goal: dict, plans: list[dict], memory=None, current_strategy=None, meta_state=None, current_profile=None, cognition=None):
         score_map = {}
         suggestions = []
         suggested_strategy = None
@@ -137,6 +140,7 @@ Return ONLY valid JSON:
 
         strategy_effective = True
         profile_suitable = True
+        cognition_match = True
         efficiency_trend = "stable"
 
         if meta_state:
@@ -147,14 +151,14 @@ Return ONLY valid JSON:
                     profile_suitable = False
                     efficiency_trend = "declining"
                     suggested_profile = "safe_executor"
-                    suggestions.append(f"success rate {perf.success_rate:.0%} - switch to safe_executor")
+                    suggestions.append(f"success rate {perf.success_rate:.0%} - switch to safe_executor (deep cognition)")
                 elif perf.success_rate > 0.95 and perf.avg_steps <= 2:
                     suggested_profile = "efficient_executor"
-                    suggestions.append(f"high efficiency - switch to efficient_executor")
+                    suggestions.append(f"high efficiency - switch to efficient_executor (shallow cognition)")
 
                 if perf.avg_replans > 2:
                     suggested_profile = "learning"
-                    suggestions.append(f"high replan rate - switch to learning profile")
+                    suggestions.append(f"high replan rate - switch to learning profile (deep cognition)")
 
             if len(failure_patterns) >= 3:
                 suggested_strategy = "safe_mode"
@@ -178,11 +182,22 @@ Return ONLY valid JSON:
                         strategy_effective = False
                         suggestions.append(f"strategy '{s}' has {sr:.0%} success rate")
 
+        if cognition:
+            for plan in plans:
+                steps = plan.get("steps", [])
+                if cognition.level == "shallow" and len(steps) > 3:
+                    cognition_match = False
+                    suggestions.append(f"shallow cognition but plan has {len(steps)} steps (expected <=3)")
+                if cognition.level == "deep" and len(steps) < 2:
+                    cognition_match = False
+                    suggestions.append(f"deep cognition but plan has only {len(steps)} steps (expected >=2)")
+
         meta_analysis = {
             "strategy_effective": strategy_effective,
             "profile_suitable": profile_suitable,
+            "cognition_match": cognition_match,
             "efficiency_trend": efficiency_trend,
-            "system_recommendation": "continue current settings" if (strategy_effective and profile_suitable) else "adjustment recommended"
+            "system_recommendation": "continue current settings" if (strategy_effective and profile_suitable and cognition_match) else "adjustment recommended"
         }
 
         for plan in plans:
@@ -207,6 +222,12 @@ Return ONLY valid JSON:
                 if current_profile.planner_style == "minimal_steps" and len(steps) > 3:
                     score -= 0.2
                     suggestions.append("profile expects minimal steps but plan is long")
+
+            if cognition:
+                if cognition.level == "shallow" and len(steps) > 3:
+                    score -= 0.3
+                if cognition.level == "deep" and len(steps) < 2:
+                    score -= 0.1
 
             if "create" in goal_text or "创建" in goal_text:
                 if "product.create" not in plan_tools:
