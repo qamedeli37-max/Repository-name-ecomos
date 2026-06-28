@@ -8,8 +8,22 @@ class Supervisor:
         self.product_service = product_service
 
     def execute_task(self, task: Task):
-        if task.intent == "create_product":
-            data = ProductCreate(**task.data)
-            return self.product_service.create_product(data)
-        else:
-            raise ValueError(f"Unknown intent: {task.intent}")
+        intent = task.intent
+        data = task.data
+
+        # ========== PRODUCT ==========
+        if intent == "product.create":
+            return self.product_service.create(data)
+
+        if intent == "product.update":
+            return self.product_service.update(data)
+
+        if intent == "product.get":
+            return self.product_service.get(data)
+
+        # ========== ORDER（先占位） ==========
+        if intent == "order.create":
+            return {"status": "not implemented yet"}
+
+        # ========== fallback ==========
+        return {"error": f"unknown intent: {intent}"}
