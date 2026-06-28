@@ -24,15 +24,31 @@ class Agent:
 
     def run(self, user_input: str):
         execution_id = str(uuid4())
-        if self.client:
-            plan = self._llm_decide(user_input)
-        else:
-            plan = {"steps": self._rule_plan(user_input)}
-        return self._execute(execution_id, plan)
+        goal = self._parse_goal(user_input)
 
-    def _execute(self, execution_id: str, plan: dict):
+        if self.client:
+            plan_data = self._llm_plan(goal)
+        else:
+            plan_data = {"plan": self._rule_plan(goal)}
+
+        return self._execute(execution_id, goal, plan_data)
+
+    def _parse_goal(self, user_input: str):
+        if isinstance(user_input, dict):
+            return {
+                "goal": user_input.get("goal", ""),
+                "constraints": user_input.get("constraints", []),
+                "context": user_input.get("context", {})
+            }
+        return {
+            "goal": user_input,
+            "constraints": [],
+            "context": {}
+        }
+
+    def _execute(self, execution_id: str, goal: dict, plan_data: dict):
         results = []
-        for step in plan.get("steps", []):
+        for step in plan_data.get("plan", []):
             tool = self.tools.get(step.get("tool"))
             if not tool:
                 results.append({
@@ -71,6 +87,7 @@ class Agent:
 
         return {
             "execution_id": execution_id,
+            "goal": goal.get("goal", ""),
             "steps": results
         }
 
@@ -96,20 +113,23 @@ Return ONLY valid JSON with corrected args."""
         step["args"] = fixed.get("args", step.get("args", {}))
         return step
 
-    # ========== LLM Mode ==========
+    # ========== LLM Planner ==========
 
-    def _llm_decide(self, user_input: str):
+    def _llm_plan(self, goal: dict):
         tool_list = "\n".join(self.tools.keys())
         response = self.client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {
                     "role": "system",
-                    "content": f"""You are a tool calling engine.
+                    "content": f"""You are a task planner.
+
+Given a goal, create a plan with steps.
 
 Return ONLY valid JSON:
 {{
-    "steps": [
+    "goal": "the goal description",
+    "plan": [
         {{
             "tool": "tool.name",
             "args": {{}}
@@ -118,11 +138,12 @@ Return ONLY valid JSON:
 }}
 
 Available tools:
-{tool_list}
-
-You may use multiple steps if needed."""
+{tool_list}"""
                 },
-                {"role": "user", "content": user_input}
+                {
+                    "role": "user",
+                    "content": json.dumps(goal)
+                }
             ]
         )
         content = response.choices[0].message.content
@@ -130,19 +151,19 @@ You may use multiple steps if needed."""
 
     # ========== Rule Mode (fallback) ==========
 
-    def _rule_plan(self, text: str):
-        text_lower = text.lower()
+    def _rule_plan(self, goal: dict):
+        text = goal.get("goal", "").lower()
         steps = []
 
-        if "create" in text_lower or "创建" in text_lower:
+        if "create" in text or "创建" in text:
             steps.append({"tool": "product.create", "args": self._parse_product_create(text)})
 
-        if "update" in text_lower or "修改" in text_lower:
+        if "update" in text or "修改" in text:
             steps.append({"tool": "product.update", "args": self._parse_product_update(text)})
 
-        if "list" in text_lower or "show all" in text_lower or "查看所有" in text_lower:
+        if "list" in text or "show all" in text or "查看所有" in text:
             steps.append({"tool": "product.list", "args": {}})
-        elif "get" in text_lower or "show" in text_lower or "查看" in text_lower:
+        elif "get" in text or "show" in text or "查看" in text:
             steps.append({"tool": "product.get", "args": {}})
 
         if not steps:
